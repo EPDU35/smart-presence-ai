@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import mockupImage from "@/img/Mockup.png";
 import logoImage from "@/img/smart_presence_logo.png";
 import { QrCode, MapPin, BarChart3, Shield, Check, ArrowRight, Smartphone, ChevronDown, Rocket, Clock, XCircle, DollarSign } from "lucide-react";
@@ -46,18 +47,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* NAV */}
-      <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-slate-100 bg-white/90 px-6 backdrop-blur-sm lg:px-12">
-        <div className="flex items-center gap-2">
-          <img src={logoImage} alt="Smart Presence Logo" className="h-7 w-auto object-contain" />
-          <span className="text-lg font-bold text-slate-900">Smart Presence</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/pricing" className="hidden text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors sm:block">Tarifs</Link>
-          <Link to="/login"><Button variant="secondary" size="sm" className="rounded-xl border border-slate-200">Connexion</Button></Link>
-          <Link to="/register"><Button size="sm" className="rounded-xl">Commencer</Button></Link>
-        </div>
-      </motion.nav>
+      <PublicNavbar />
 
       {/* HERO */}
       <section className="px-6 py-20 lg:px-12">

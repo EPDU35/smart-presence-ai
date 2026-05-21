@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
+import { fetchTodayCheckins } from "@/services/checkin.service";
 import { useAuthStore } from "@/store/authStore";
 import { useCheckin } from "@/hooks/useCheckin";
 import { useGeolocation } from "@/hooks/useGeolocation";
@@ -7,7 +9,8 @@ import { QrScanner } from "@/components/qr/QrScanner";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { CheckCircle, XCircle, MapPin, Clock, Building2, AlertCircle, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, MapPin, Clock, Building2, AlertCircle, RefreshCw, Zap } from "lucide-react";
+import { haversineDistance } from "@/utils/geo";
 
 type FlowState = "idle" | "scanning" | "validating" | "success" | "error";
 
@@ -24,15 +27,78 @@ export function CheckinPage() {
   const [flowState, setFlowState] = useState<FlowState>("idle");
   const [result, setResult] = useState<CheckinResult | null>(null);
 
+  const { data: todayCheckins = [], isLoading: loadingToday } = useQuery({
+    queryKey: ["checkins", "today", user?.company_id],
+    queryFn: () => fetchTodayCheckins(user?.company_id ?? ""),
+    enabled: !!user?.company_id,
+  });
+
+  const hasValidCheckinToday = useMemo(
+    () => todayCheckins.some((c) => c.user_id === user?.id && c.status === "VALID"),
+    [todayCheckins, user?.id]
+  );
+
   const { latitude, longitude, accuracy, loading: geoLoading, error: geoError, getPosition } = useGeolocation();
 
-  const { checkin, isCheckingIn } = useCheckin({
+  const { checkin, autoCheckin, isCheckingIn } = useCheckin({
     companyId: user?.company_id ?? "",
     userId: user?.id ?? "",
     companyLat: company?.latitude ?? 0,
     companyLon: company?.longitude ?? 0,
     radius: company?.radius ?? 200,
+    openingTime: company?.opening_time,
+    lateTolerance: company?.late_tolerance,
   });
+
+  const gpsOk = !geoLoading && !geoError && !!latitude && !!longitude;
+  const gpsGood = gpsOk && !!accuracy && accuracy <= 50;
+
+  // Compute distance to check for auto-validation
+  const distance = useMemo(() => {
+    if (!gpsOk || !company?.latitude || !company?.longitude || !latitude || !longitude) return null;
+    return haversineDistance(latitude, longitude, company.latitude, company.longitude);
+  }, [gpsOk, company, latitude, longitude]);
+
+  // Similarité de la position en pourcentage (100% = exactement sur place, 0% = à la limite du rayon ou plus loin)
+  const positionSimilarity = useMemo(() => {
+    if (distance === null || !company?.radius) return 0;
+    const ratio = distance / company.radius;
+    return Math.max(0, Math.round((1 - ratio) * 100));
+  }, [distance, company]);
+
+  // Validation automatique si la position correspond à 92% ou plus et pas encore pointé
+  useEffect(() => {
+    if (flowState === "idle" && gpsGood && distance !== null && company?.radius && positionSimilarity >= 92 && !loadingToday && !hasValidCheckinToday) {
+      handleAutoCheckin();
+    }
+  }, [flowState, gpsGood, distance, company, positionSimilarity, loadingToday, hasValidCheckinToday]);
+
+  async function handleAutoCheckin() {
+    setFlowState("validating");
+    try {
+      const res = await autoCheckin();
+      setResult({
+        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        company: company?.name ?? "Votre entreprise",
+        distance: Math.round(res.distance),
+        message: "Présence enregistrée automatiquement",
+      });
+      setFlowState("success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      let errorCode: CheckinResult["errorCode"] = "network";
+      if (msg.includes("zone") || msg.includes("distance")) errorCode = "position";
+      else if (msg.includes("GPS") || msg.includes("geo")) errorCode = "gps";
+      setResult({
+        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        company: company?.name ?? "",
+        distance: 0,
+        message: msg || "Erreur lors du pointage automatique",
+        errorCode,
+      });
+      setFlowState("error");
+    }
+  }
 
   async function handleScan(token: string) {
     setFlowState("validating");
@@ -66,9 +132,6 @@ export function CheckinPage() {
     setFlowState("idle");
     setResult(null);
   }
-
-  const gpsOk = !geoLoading && !geoError && latitude && longitude;
-  const gpsGood = gpsOk && accuracy && accuracy <= 50;
 
   return (
     <div className="mx-auto max-w-sm space-y-5">
@@ -105,9 +168,28 @@ export function CheckinPage() {
             ) : geoError ? (
               <><p className="text-sm font-medium text-danger-800">GPS non disponible</p><p className="text-xs text-danger-600">Activez la localisation</p></>
             ) : (
-              <><p className="text-sm font-medium text-slate-800">
-                {gpsGood ? "Position validée" : "Position approximative"}
-              </p><p className="text-xs text-slate-500">Précision : {accuracy ? `${Math.round(accuracy)}m` : "..."}</p></>
+              <>
+                <p className="text-sm font-medium text-slate-800">
+                  {gpsGood ? "Position validée" : "Position approximative"}
+                </p>
+                <p className="text-xs text-slate-500">Précision : {accuracy ? `${Math.round(accuracy)}m` : "..."}</p>
+                {distance !== null && company && (
+                  <div className="mt-1.5 pt-1.5 border-t border-slate-100/50 flex flex-col gap-0.5 text-[11px] text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Distance :</span>
+                      <span className="font-semibold text-slate-700">{Math.round(distance)}m / {company.radius}m</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Similarité :</span>
+                      <span className={`font-semibold px-1.5 py-0.2 rounded text-[10px] ${
+                        positionSimilarity >= 92 ? "bg-success-100 text-success-800" : "bg-warning-100 text-warning-800"
+                      }`}>
+                        {positionSimilarity}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
           {geoError && (
@@ -127,22 +209,56 @@ export function CheckinPage() {
       <AnimatePresence mode="wait">
         {/* IDLE */}
         {flowState === "idle" && (
-          <motion.div key="idle" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }}>
-            <button
-              onClick={() => setFlowState("scanning")}
-              disabled={!!geoError || geoLoading}
-              className="w-full flex flex-col items-center gap-4 rounded-3xl bg-primary-600 py-10 text-white shadow-xl hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
-            >
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/20">
-                <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9V5a2 2 0 012-2h4M9 3H5M3 9h6m0 0v6m0-6h6m0 0V9m0 6v4a2 2 0 01-2 2h-4m4-2h4M21 15h-6m0 0v-6m6 6v4a2 2 0 01-2 2h-4" />
-                </svg>
+          <motion.div key="idle" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="flex flex-col gap-3">
+            {hasValidCheckinToday ? (
+              <div className="rounded-3xl border border-success-200 bg-success-50 p-6 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success-100">
+                  <CheckCircle className="h-6 w-6 text-success-600" />
+                </div>
+                <p className="text-sm font-bold text-success-900">Présence validée</p>
+                <p className="text-xs text-success-700 mt-1">Vous avez déjà validé votre présence pour la session d'aujourd'hui.</p>
               </div>
-              <div className="text-center">
-                <p className="text-xl font-bold">Scanner QR Code</p>
-                <p className="mt-1 text-sm text-white/70">Ouvrir la caméra pour pointer</p>
-              </div>
-            </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setFlowState("scanning")}
+                  disabled={!!geoError || geoLoading}
+                  className="w-full flex flex-col items-center gap-4 rounded-3xl bg-primary-600 py-8 text-white shadow-xl hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
+                    <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9V5a2 2 0 012-2h4M9 3H5M3 9h6m0 0v6m0-6h6m0 0V9m0 6v4a2 2 0 01-2 2h-4m4-2h4M21 15h-6m0 0v-6m6 6v4a2 2 0 01-2 2h-4" />
+                    </svg>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold">Scanner QR Code</p>
+                    <p className="mt-1 text-sm text-white/70">Ouvrir la caméra pour pointer</p>
+                  </div>
+                </button>
+                
+                {distance !== null && positionSimilarity >= 92 && (
+                  <button
+                    onClick={handleAutoCheckin}
+                    disabled={!!geoError || geoLoading}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-success-500 py-4 text-white shadow-md hover:bg-success-600 active:scale-[0.98] transition-all"
+                  >
+                    <Zap className="h-5 w-5 fill-current" />
+                    <span className="font-semibold">Validation Automatique ({positionSimilarity}%)</span>
+                  </button>
+                )}
+
+                {distance !== null && distance <= (company?.radius ?? 200) && positionSimilarity < 92 && (
+                  <div className="rounded-2xl border border-warning-200 bg-warning-50 p-4 text-center">
+                    <p className="text-xs text-warning-800 font-medium">
+                      Pointage automatique indisponible (similarité de {positionSimilarity}%, min. 92% requis).
+                    </p>
+                    <p className="text-xs text-warning-600 mt-1">
+                      Veuillez scanner le QR Code pour valider votre présence.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </motion.div>
         )}
 

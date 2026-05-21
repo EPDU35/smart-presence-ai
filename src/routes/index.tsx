@@ -9,6 +9,7 @@ import { PricingPage } from "@/pages/Pricing/PricingPage";
 import { LoginPage } from "@/pages/Auth/LoginPage";
 import { RegisterPage } from "@/pages/Auth/RegisterPage";
 import { ForgotPasswordPage } from "@/pages/Auth/ForgotPasswordPage";
+import { JoinCompanyPage } from "@/pages/Auth/JoinCompanyPage";
 import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
 import { DashboardPage } from "@/pages/Dashboard/DashboardPage";
 import { EmployeesPage } from "@/pages/Employees/EmployeesPage";
@@ -20,6 +21,8 @@ import { AttendancePage } from "@/pages/Attendance/AttendancePage";
 import { LivePage } from "@/pages/Live/LivePage";
 import { HistoryPage } from "@/pages/History/HistoryPage";
 import { EmployeeDashboardPage } from "@/pages/Employee/EmployeeDashboardPage";
+
+import { QrKioskPage } from "@/pages/Kiosk/QrKioskPage";
 
 function LoadingScreen() {
   return (
@@ -34,9 +37,11 @@ function LoadingScreen() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // Si l'utilisateur n'a pas de company_id, il doit d'abord rejoindre une entreprise
+  if (!user?.company_id) return <Navigate to="/join-company" replace />;
   return <>{children}</>;
 }
 
@@ -53,6 +58,20 @@ function SmartDashboard() {
   return <DashboardPage />;
 }
 
+/**
+ * Route spéciale pour /join-company :
+ * - Si pas authentifié → /login
+ * - Si authentifié + déjà une company → /dashboard
+ * - Sinon → affiche la page
+ */
+function JoinCompanyRoute() {
+  const { isAuthenticated, isLoading, user } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.company_id) return <Navigate to="/dashboard" replace />;
+  return <JoinCompanyPage />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -62,6 +81,9 @@ export function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+
+      {/* Rejoindre une entreprise (authentifié mais sans company) */}
+      <Route path="/join-company" element={<JoinCompanyRoute />} />
 
       {/* App */}
       <Route element={<DashboardLayout />}>
@@ -74,6 +96,7 @@ export function AppRoutes() {
         <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+        <Route path="/qr-display" element={<ProtectedRoute><QrKioskPage /></ProtectedRoute>} />
       </Route>
 
       {/* 404 */}

@@ -18,7 +18,7 @@ export async function fetchActiveQrSession(companyId: string): Promise<QrSession
 
 export async function generateQrToken(companyId: string): Promise<QrSession> {
   const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 15 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 10 * 1000).toISOString();
 
   const { data, error } = await supabase
     .from("qr_sessions")

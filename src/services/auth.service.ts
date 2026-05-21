@@ -36,6 +36,7 @@ export async function updateProfile(
     lastname?:   string;
     role?:       string;
     company_id?: string;
+    phone?:      string | null;
   }
 ) {
   const { data, error } = await supabase

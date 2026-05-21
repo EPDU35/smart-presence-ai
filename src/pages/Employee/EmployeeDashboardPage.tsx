@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatDateTime } from "@/utils/format";
-import { QrCode, History, CheckCircle, XCircle, Clock, Calendar, Flame, User } from "lucide-react";
+import { QrCode, History, CheckCircle, XCircle, Clock, Calendar, Flame, User, Building2 } from "lucide-react";
 
 export function EmployeeDashboardPage() {
-  const { user } = useAuthStore();
+  const { user, company } = useAuthStore();
 
   const { data: allCheckins = [], isLoading: loadingAll } = useQuery({
     queryKey: ["checkins", "user", user?.id],
@@ -31,17 +31,26 @@ export function EmployeeDashboardPage() {
   );
 
   const stats = useMemo(() => {
-    const valid = allCheckins.filter((c) => c.status === "VALID").length;
-    const total = allCheckins.length;
-    const rate = total > 0 ? Math.round((valid / total) * 100) : 0;
+    const validCheckins = allCheckins.filter((c) => c.status === "VALID");
+    
+    // Nombre de jours uniques avec une présence validée
+    const uniqueValidDays = new Set(
+      validCheckins.map((c) => new Date(c.created_at).toLocaleDateString("fr-FR"))
+    ).size;
+
+    const valid = uniqueValidDays;
+    
+    // Taux de réussite des pointages
+    const totalCheckins = allCheckins.length;
+    const rate = totalCheckins > 0 ? Math.round((validCheckins.length / totalCheckins) * 100) : 0;
 
     // Streak (jours consécutifs)
     let streak = 0;
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const sorted = [...allCheckins]
-      .filter((c) => c.status === "VALID")
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const sorted = [...validCheckins].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
 
     const seenDates = new Set(
       sorted.map((c) =>
@@ -55,26 +64,36 @@ export function EmployeeDashboardPage() {
       checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    return { valid, total, rate, streak };
+    return { valid, total: totalCheckins, rate, streak };
   }, [allCheckins]);
 
   const isLoading = loadingAll || loadingToday;
   const firstName = user?.firstname ?? "vous";
 
   return (
-    <div className="mx-auto max-w-lg space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 sm:px-0">
       {/* Greeting */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-slate-900">
           Bonjour {firstName} <User className="inline h-5 w-5 text-slate-700 ml-2" />
         </h1>
-        <p className="text-sm text-slate-500">
-          {new Date().toLocaleDateString("fr-FR", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <p className="text-sm text-slate-500">
+            {new Date().toLocaleDateString("fr-FR", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+          {company && (
+            <>
+              <span className="text-slate-300 text-xs">•</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full border border-primary-100">
+                <Building2 className="h-3 w-3" /> {company.name}
+              </span>
+            </>
+          )}
+        </div>
       </motion.div>
 
       {/* Status du jour */}
@@ -84,11 +103,11 @@ export function EmployeeDashboardPage() {
         transition={{ delay: 0.05 }}
       >
         {isLoading ? (
-          <div className="flex h-28 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex h-28 items-center justify-center rounded-3xl border border-slate-200 bg-white shadow-sm">
             <Spinner />
           </div>
         ) : todayMyCheckin ? (
-          <div className="flex items-center gap-4 rounded-2xl border border-success-200 bg-success-50 p-5 shadow-sm">
+          <div className="flex items-center gap-4 rounded-3xl border border-success-200 bg-success-50 p-5 shadow-sm">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success-100">
               <CheckCircle className="h-6 w-6 text-success-600" />
             </div>
@@ -104,7 +123,7 @@ export function EmployeeDashboardPage() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-4 rounded-2xl border border-danger-200 bg-danger-50 p-5 shadow-sm">
+          <div className="flex items-center gap-4 rounded-3xl border border-danger-200 bg-danger-50 p-5 shadow-sm">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-danger-100">
               <XCircle className="h-6 w-6 text-danger-600" />
             </div>
@@ -135,22 +154,22 @@ export function EmployeeDashboardPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="grid grid-cols-3 gap-3"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
       >
-        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 shadow-sm text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm text-center min-h-[140px]">
           <div className="flex items-center justify-center gap-1">
             <Flame className="h-4 w-4 text-warning-500" />
             <p className="text-xl font-bold text-slate-900">{stats.streak}</p>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Série jours</p>
+          <p className="text-xs text-slate-400 mt-2">Série jours</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 shadow-sm text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm text-center min-h-[140px]">
           <p className="text-xl font-bold text-success-600">{stats.valid}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Présences</p>
+          <p className="text-xs text-slate-400 mt-2">Présences</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 shadow-sm text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm text-center min-h-[140px]">
           <p className="text-xl font-bold text-primary-600">{stats.rate}%</p>
-          <p className="text-xs text-slate-400 mt-0.5">Taux</p>
+          <p className="text-xs text-slate-400 mt-2">Taux</p>
         </div>
       </motion.div>
 
@@ -161,7 +180,7 @@ export function EmployeeDashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <h2 className="font-semibold text-slate-900">Récents</h2>
               <Link

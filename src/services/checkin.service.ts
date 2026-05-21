@@ -47,3 +47,21 @@ export async function fetchTodayCheckins(companyId: string): Promise<Checkin[]> 
   if (error) throw error;
   return (data ?? []) as Checkin[];
 }
+
+export async function fetchWeekCheckins(companyId: string): Promise<Checkin[]> {
+  const now = new Date();
+  const day = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+  monday.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from("checkins")
+    .select("*")
+    .eq("company_id", companyId)
+    .gte("created_at", monday.toISOString())
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as Checkin[];
+}

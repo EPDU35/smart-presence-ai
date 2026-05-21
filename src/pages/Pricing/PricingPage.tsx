@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import logoImage from "@/img/smart_presence_logo.png";
 import { Check, Zap, Building2, Landmark, ChevronDown, ArrowRight } from "lucide-react";
 
@@ -55,16 +56,7 @@ export function PricingPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* NAV */}
-      <nav className="flex h-16 items-center justify-between border-b border-slate-100 bg-white px-6 lg:px-12">
-        <Link to="/" className="flex items-center gap-2">
-          <img src={logoImage} alt="Smart Presence Logo" className="h-7 w-auto object-contain" />
-          <span className="text-lg font-bold text-slate-900">Smart Presence</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          <Link to="/login"><Button variant="secondary" size="sm" className="rounded-xl border border-slate-200">Connexion</Button></Link>
-          <Link to="/register"><Button size="sm" className="rounded-xl">Commencer</Button></Link>
-        </div>
-      </nav>
+      <PublicNavbar />
 
       {/* HEADER */}
       <div className="px-6 py-16 text-center lg:px-12">

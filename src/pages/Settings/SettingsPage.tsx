@@ -8,14 +8,18 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { LocationPicker } from "@/components/register/LocationPicker";
 import { updateCompany } from "@/services/company.service";
+import { updateProfile } from "@/services/auth.service";
 import { Shield, Smartphone, Clock, MapPin, Building2, User, Copy, Check } from "lucide-react";
 
 export function SettingsPage() {
-  const { user, company } = useAuthStore();
+  const { user, company, setCompany, setUser } = useAuthStore();
+  const isEmployee = user?.role === "EMPLOYEE";
+  
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [activeSection, setActiveSection] = useState<"company" | "presence" | "security" | "account">("company");
+  const [activeSection, setActiveSection] = useState<"company" | "presence" | "security" | "account">(isEmployee ? "account" : "company");
 
   const [form, setForm] = useState({
     name: company?.name ?? "",
@@ -25,26 +29,67 @@ export function SettingsPage() {
     latitude: company?.latitude ?? 0,
     longitude: company?.longitude ?? 0,
     location: "",
+    opening_time: company?.opening_time ?? "08:00",
+    late_tolerance: company?.late_tolerance ?? 15,
+  });
+
+  const [userForm, setUserForm] = useState({
+    firstname: user?.firstname ?? "",
+    lastname: user?.lastname ?? "",
+    phone: user?.phone ?? "",
   });
 
   function updateField<K extends keyof typeof form>(key: K, value: string | number) {
+    // Guard against NaN for numeric fields
+    if (typeof value === "number" && isNaN(value)) return;
     setForm((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   }
 
+  function updateUserField<K extends keyof typeof userForm>(key: K, value: string) {
+    setUserForm((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  }
+
   async function handleSave() {
-    if (!company?.id) return;
     setSaving(true);
+    setSaved(false);
+    setErrorMsg(null);
     try {
-      await updateCompany(company.id, {
-        name: form.name,
-        email: form.email,
-        phone: form.phone || null,
-        radius: Number(form.radius),
-        latitude: Number(form.latitude),
-        longitude: Number(form.longitude),
-      });
+      if (activeSection === "account") {
+        if (!user?.id) {
+          setSaving(false);
+          return;
+        }
+        const { data, error } = await updateProfile(user.id, {
+          firstname: userForm.firstname,
+          lastname: userForm.lastname,
+          phone: userForm.phone || null,
+        });
+        if (error) throw new Error(error.message);
+        if (data) setUser(data);
+      } else if ((activeSection === "company" || activeSection === "presence") && company?.id) {
+        const radiusVal = Number(form.radius);
+        const latVal = Number(form.latitude);
+        const lngVal = Number(form.longitude);
+        const toleranceVal = Number(form.late_tolerance);
+
+        const updatedCompany = await updateCompany(company.id, {
+          name: form.name,
+          email: form.email,
+          phone: form.phone || null,
+          radius: isNaN(radiusVal) ? company.radius : radiusVal,
+          latitude: isNaN(latVal) ? company.latitude : latVal,
+          longitude: isNaN(lngVal) ? company.longitude : lngVal,
+          opening_time: form.opening_time || null,
+          late_tolerance: isNaN(toleranceVal) ? (company.late_tolerance ?? 15) : toleranceVal,
+        });
+        setCompany(updatedCompany);
+      }
       setSaved(true);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Erreur lors de l'enregistrement");
     } finally {
       setSaving(false);
     }
@@ -53,7 +98,6 @@ export function SettingsPage() {
   function copyCode() {
     const code = company?.code ?? "";
     if (!code) return;
-    // Fallback pour HTTP (localhost) où clipboard API est bloquée
     if (navigator.clipboard) {
       navigator.clipboard.writeText(code).catch(() => fallbackCopy(code));
     } else {
@@ -74,35 +118,45 @@ export function SettingsPage() {
     document.body.removeChild(el);
   }
 
-  const sections = [
+  const allSections = [
     { id: "company", label: "Entreprise", icon: Building2 },
     { id: "presence", label: "Présence", icon: MapPin },
     { id: "security", label: "Sécurité", icon: Shield },
     { id: "account", label: "Mon compte", icon: User },
   ] as const;
 
+  const sections = isEmployee 
+    ? allSections.filter(s => s.id === "account" || s.id === "security")
+    : allSections;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-slate-900">Paramètres</h1>
-        <p className="text-sm text-slate-500">Configuration de votre entreprise et de votre compte</p>
+        <p className="text-sm text-slate-500">Configuration de votre {isEmployee ? "compte" : "entreprise et de votre compte"}</p>
       </motion.div>
 
       {saved && <Alert variant="success">Modifications enregistrées avec succès ✓</Alert>}
+      {errorMsg && (
+        <div className="rounded-xl border border-danger-200 bg-danger-50 p-4">
+          <p className="text-sm font-semibold text-danger-900">Erreur lors de l'enregistrement</p>
+          <p className="mt-1 text-xs text-danger-700">{errorMsg}</p>
+        </div>
+      )}
 
       {/* Tabs */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-        <div className="flex gap-1 rounded-xl border border-slate-200 bg-white p-1">
-          {sections.map((s) => (
+        <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          {sections.map((s, index) => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-all focus:z-10 ${
                 activeSection === s.id
                   ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
+                  : "bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+              } ${index === 0 ? "rounded-l-2xl" : ""} ${index === sections.length - 1 ? "rounded-r-2xl" : "border-l border-slate-200"}`}
             >
               <s.icon className="h-4 w-4" />
               <span className="hidden sm:inline">{s.label}</span>
@@ -189,13 +243,13 @@ export function SettingsPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <Input type="time" label="Heure d'arrivée" defaultValue="08:00" />
-                <Input type="time" label="Heure de fin" defaultValue="18:00" />
+                <Input type="time" label="Heure d'ouverture" value={form.opening_time} onChange={(e) => updateField("opening_time", e.target.value)} />
+                <Input type="time" label="Heure de fin (info)" defaultValue="18:00" />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Tolérance retard (minutes)</label>
-                <Input type="number" min={0} max={60} defaultValue={15} />
+                <Input type="number" min={0} max={120} value={form.late_tolerance} onChange={(e) => updateField("late_tolerance", parseInt(e.target.value))} />
                 <p className="mt-1 text-xs text-slate-400">Délai accordé avant qu'un pointage soit marqué comme retard.</p>
               </div>
             </CardContent>
@@ -248,23 +302,8 @@ export function SettingsPage() {
           <Card>
             <CardHeader><CardTitle>Logs de connexion</CardTitle></CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {[
-                  { action: "Connexion réussie", time: "Aujourd'hui, 08:34", status: "success" as const },
-                  { action: "Connexion réussie", time: "Hier, 09:12", status: "success" as const },
-                  { action: "Tentative échouée", time: "Il y a 3 jours", status: "danger" as const },
-                ].map((log, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-slate-400" />
-                      <p className="text-sm text-slate-700">{log.action}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-slate-400">{log.time}</p>
-                      <Badge variant={log.status}>{log.status === "success" ? "OK" : "Erreur"}</Badge>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex h-24 items-center justify-center rounded-xl bg-slate-50">
+                <p className="text-sm text-slate-400">Aucun log de connexion disponible pour le moment.</p>
               </div>
             </CardContent>
           </Card>
@@ -288,11 +327,11 @@ export function SettingsPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Prénom" defaultValue={user?.firstname ?? ""} />
-                <Input label="Nom" defaultValue={user?.lastname ?? ""} />
+                <Input label="Prénom" value={userForm.firstname} onChange={(e) => updateUserField("firstname", e.target.value)} />
+                <Input label="Nom" value={userForm.lastname} onChange={(e) => updateUserField("lastname", e.target.value)} />
               </div>
-              <Input type="email" label="Email" defaultValue={user?.email ?? ""} />
-              <Input label="Téléphone" defaultValue={user?.phone ?? ""} />
+              <Input type="email" label="Email" value={user?.email ?? ""} disabled />
+              <Input label="Téléphone" value={userForm.phone} onChange={(e) => updateUserField("phone", e.target.value)} />
             </CardContent>
           </Card>
 
@@ -307,7 +346,7 @@ export function SettingsPage() {
         </motion.div>
       )}
 
-      {/* Save button - visible on company and presence tabs */}
+      {/* Save button - visible on company, presence, and account tabs */}
       {(activeSection === "company" || activeSection === "presence" || activeSection === "account") && (
         <div className="flex justify-end">
           <Button onClick={handleSave} isLoading={saving} className="rounded-xl">

@@ -67,9 +67,10 @@ export async function updateCompany(
   id:      string,
   updates: Partial<Company>
 ): Promise<Company> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await supabase
     .from("companies")
-    .update(updates)
+    .update(updates as any)
     .eq("id", id)
     .select()
     .single();

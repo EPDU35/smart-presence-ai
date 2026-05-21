@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Alert } from "@/components/ui/Alert";
 import { ArrowLeft, Mail, CheckCircle } from "lucide-react";
+import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import logoImage from "@/img/smart_presence_logo.png";
 
 export function ForgotPasswordPage() {
@@ -33,9 +34,11 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      {/* LEFT */}
-      <div className="hidden w-1/2 flex-col justify-center bg-primary-50 px-16 lg:flex">
+    <div className="flex min-h-screen flex-col bg-white">
+      <PublicNavbar />
+      <div className="flex flex-1">
+        {/* LEFT */}
+        <div className="hidden w-1/2 flex-col justify-center bg-primary-50 px-16 lg:flex">
         <div className="max-w-md">
           <div className="mb-6 flex items-center gap-2">
             <img src={logoImage} alt="Smart Presence Logo" className="h-8 w-auto object-contain" />
@@ -87,6 +90,7 @@ export function ForgotPasswordPage() {
             </Link>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

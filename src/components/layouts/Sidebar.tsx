@@ -16,6 +16,7 @@ import {
   Activity,
   Clock,
   History,
+  Maximize,
 } from "lucide-react";
 
 const ADMIN_NAV = [
@@ -35,6 +36,7 @@ const EMPLOYEE_NAV = [
   { to: "/dashboard", label: "Mon espace", icon: LayoutDashboard },
   { to: "/checkin", label: "Pointer", icon: QrCode },
   { to: "/history", label: "Mon historique", icon: History },
+  { to: "/settings", label: "Paramètres", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -120,7 +122,7 @@ export function Sidebar() {
           {!isEmployee && (
             <div className="mt-6 border-t border-slate-100 pt-4">
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                Employé
+                Outils
               </p>
               <NavLink
                 to="/checkin"
@@ -135,7 +137,23 @@ export function Sidebar() {
                 )}
               >
                 <QrCode className="h-4 w-4 shrink-0" />
-                Pointage QR
+                Pointage Scanner
+              </NavLink>
+
+              <NavLink
+                to="/qr-display"
+                onClick={() => {
+                  if (window.innerWidth < 1024) toggleSidebar();
+                }}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mt-1",
+                  location.pathname === "/qr-display"
+                    ? "bg-primary-50 text-primary-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <Maximize className="h-4 w-4 shrink-0" />
+                Écran QR Code
               </NavLink>
             </div>
           )}

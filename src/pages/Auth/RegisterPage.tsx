@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { LocationPicker } from "@/components/register/LocationPicker";
+import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import {
   Building2, Users, ArrowRight, ArrowLeft,
   Eye, EyeOff, Check, X,
@@ -199,9 +200,11 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      {/* LEFT */}
-      <div className="hidden w-1/2 bg-primary-50 lg:flex lg:flex-col lg:justify-center lg:px-16">
+    <div className="flex min-h-screen flex-col bg-white">
+      <PublicNavbar />
+      <div className="flex flex-1">
+        {/* LEFT */}
+        <div className="hidden w-1/2 bg-primary-50 lg:flex lg:flex-col lg:justify-center lg:px-16">
         <div className="max-w-md">
           <div className="mb-6 flex items-center gap-2">
             <img src={logoImage} alt="Smart Presence Logo" className="h-8 w-auto object-contain" />
@@ -367,6 +370,7 @@ export function RegisterPage() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -103,11 +103,45 @@ export function AttendancePage() {
   }, [checkins, period, statusFilter, search, employeeMap]);
 
   const stats = useMemo(() => {
+    const { from, to } = getDateRange(period);
+    
+    // Pour les statistiques globales de la période, on compte le nombre total d'événements
+    const total = filtered.length;
     const valid = filtered.filter((c) => c.status === "VALID").length;
     const invalid = filtered.filter((c) => c.status === "INVALID").length;
     const suspicious = filtered.filter((c) => c.status === "SUSPICIOUS").length;
-    return { valid, invalid, suspicious, total: filtered.length };
-  }, [filtered]);
+    
+    // Pour calculer les absents sur la période, on doit itérer jour par jour
+    let totalExpected = 0;
+    let totalUniquePresents = 0;
+    
+    const currentDate = new Date(from);
+    const endDate = new Date(Math.min(to.getTime(), new Date().getTime())); // Ne pas compter le futur
+    
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split("T")[0];
+      
+      // Employés attendus pour CE jour précis
+      const endOfDay = new Date(currentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      const expectedForDay = employees.filter(e => new Date(e.created_at) <= endOfDay).length;
+      totalExpected += expectedForDay;
+      
+      // Employés uniques présents CE jour précis
+      const dayCheckins = filtered.filter((c) => {
+        const cDate = new Date(c.created_at).toISOString().split("T")[0];
+        return cDate === dateStr && c.status === "VALID";
+      });
+      const uniquePresentsForDay = new Set(dayCheckins.map((c) => c.user_id)).size;
+      totalUniquePresents += uniquePresentsForDay;
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    const absents = Math.max(0, totalExpected - totalUniquePresents);
+
+    return { total, valid, invalid, suspicious, absents };
+  }, [filtered, period, employees]);
 
   const columns = [
     {
@@ -197,13 +231,14 @@ export function AttendancePage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-5"
       >
         {[
-          { label: "Total", value: stats.total, color: "text-slate-900" },
+          { label: "Pointages", value: stats.total, color: "text-slate-900" },
           { label: "Présents", value: stats.valid, color: "text-success-600" },
-          { label: "Refusés", value: stats.invalid, color: "text-danger-600" },
-          { label: "Suspects", value: stats.suspicious, color: "text-warning-600" },
+          { label: "Absents", value: stats.absents, color: "text-danger-600" },
+          { label: "Refusés", value: stats.invalid, color: "text-danger-400" },
+          { label: "Retards", value: stats.suspicious, color: "text-warning-600" },
         ].map((s) => (
           <div
             key={s.label}
