@@ -1,13 +1,15 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
 import { Spinner } from "@/components/ui/Spinner";
 import { DashboardLayout } from "@/components/layouts/DashboardLayout";
+import logoImage from "@/img/smart_presence_logo.png";
 
 import { LandingPage } from "@/pages/Landing/LandingPage";
 import { PricingPage } from "@/pages/Pricing/PricingPage";
 import { LoginPage } from "@/pages/Auth/LoginPage";
 import { RegisterPage } from "@/pages/Auth/RegisterPage";
+import { ForgotPasswordPage } from "@/pages/Auth/ForgotPasswordPage";
+import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
 import { DashboardPage } from "@/pages/Dashboard/DashboardPage";
 import { EmployeesPage } from "@/pages/Employees/EmployeesPage";
 import { CheckinPage } from "@/pages/Checkin/CheckinPage";
@@ -23,7 +25,8 @@ function LoadingScreen() {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
-        <Spinner size="lg" />
+        <img src={logoImage} alt="Smart Presence Logo" className="h-12 w-auto object-contain animate-pulse" />
+        <Spinner size="md" />
         <p className="text-sm text-slate-400">Chargement...</p>
       </div>
     </div>
@@ -31,20 +34,19 @@ function LoadingScreen() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
-/** Redirige les employés vers leur dashboard spécifique */
 function SmartDashboard() {
   const { user } = useAuthStore();
   if (user?.role === "EMPLOYEE") return <EmployeeDashboardPage />;
@@ -54,11 +56,14 @@ function SmartDashboard() {
 export function AppRoutes() {
   return (
     <Routes>
+      {/* Public */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
 
+      {/* App */}
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<ProtectedRoute><SmartDashboard /></ProtectedRoute>} />
         <Route path="/employees" element={<ProtectedRoute><EmployeesPage /></ProtectedRoute>} />
@@ -71,7 +76,8 @@ export function AppRoutes() {
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* 404 */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

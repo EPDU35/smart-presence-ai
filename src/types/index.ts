@@ -3,25 +3,35 @@ export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "EMPLOYEE";
 export interface Company {
   id: string;
   name: string;
-  email: string;
+  code: string;
+  email: string | null;
   phone: string | null;
+  location: string | null;
   plan: string;
   latitude: number;
   longitude: number;
   radius: number;
+  owner_id: string | null;
+  logo_url: string | null;
+  is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface User {
   id: string;
-  company_id: string;
+  company_id: string | null;   // nullable — pas de company au moment du signup
   role: UserRole;
   firstname: string;
   lastname: string;
+  fullname?: string;
   email: string;
   phone: string | null;
   avatar: string | null;
+  is_active: boolean;
+  last_seen: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Device {
@@ -44,6 +54,8 @@ export interface Checkin {
   longitude: number;
   distance: number;
   status: CheckinStatus;
+  device_info: string | null;
+  ip_address: string | null;
   created_at: string;
 }
 
@@ -53,14 +65,19 @@ export interface QrSession {
   token: string;
   expires_at: string;
   active: boolean;
+  used_at: string | null;
+  created_at: string;
 }
 
 export interface SuspiciousLog {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  company_id: string;
   reason: string;
-  device: string;
-  ip: string;
+  device: string | null;
+  ip: string | null;
+  metadata: Record<string, unknown>;
+  resolved: boolean;
   created_at: string;
 }
 

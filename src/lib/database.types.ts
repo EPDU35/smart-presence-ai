@@ -13,31 +13,100 @@ export interface Database {
         Row: {
           id: string;
           name: string;
-          email: string;
+          code: string;
+          email: string | null;
           phone: string | null;
+          location: string | null;
           plan: string;
           latitude: number;
           longitude: number;
           radius: number;
+          owner_id: string | null;
+          logo_url: string | null;
+          is_active: boolean;
           created_at: string;
+          updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["companies"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["companies"]["Insert"]>;
+        Insert: {
+          id?: string;
+          name: string;
+          code: string;
+          email?: string | null;
+          phone?: string | null;
+          location?: string | null;
+          plan?: string;
+          latitude: number;
+          longitude: number;
+          radius?: number;
+          owner_id?: string | null;
+          logo_url?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          code?: string;
+          email?: string | null;
+          phone?: string | null;
+          location?: string | null;
+          plan?: string;
+          latitude?: number;
+          longitude?: number;
+          radius?: number;
+          owner_id?: string | null;
+          logo_url?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       users: {
         Row: {
           id: string;
-          company_id: string;
+          company_id: string | null;
           role: string;
           firstname: string;
           lastname: string;
           email: string;
           phone: string | null;
           avatar: string | null;
+          is_active: boolean;
+          last_seen: string | null;
           created_at: string;
+          updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["users"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["users"]["Insert"]>;
+        Insert: {
+          id: string;
+          company_id?: string | null;
+          role?: string;
+          firstname: string;
+          lastname: string;
+          email: string;
+          phone?: string | null;
+          avatar?: string | null;
+          is_active?: boolean;
+          last_seen?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string | null;
+          role?: string;
+          firstname?: string;
+          lastname?: string;
+          email?: string;
+          phone?: string | null;
+          avatar?: string | null;
+          is_active?: boolean;
+          last_seen?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       devices: {
         Row: {
@@ -48,8 +117,23 @@ export interface Database {
           last_login: string;
           trusted: boolean;
         };
-        Insert: Omit<Database["public"]["Tables"]["devices"]["Row"], "id" | "last_login">;
-        Update: Partial<Database["public"]["Tables"]["devices"]["Insert"]>;
+        Insert: {
+          id?: string;
+          user_id: string;
+          device_name: string;
+          device_fingerprint: string;
+          last_login?: string;
+          trusted?: boolean;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          device_name?: string;
+          device_fingerprint?: string;
+          last_login?: string;
+          trusted?: boolean;
+        };
+        Relationships: [];
       };
       checkins: {
         Row: {
@@ -61,10 +145,37 @@ export interface Database {
           longitude: number;
           distance: number;
           status: string;
+          device_info: string | null;
+          ip_address: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["checkins"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["checkins"]["Insert"]>;
+        Insert: {
+          id?: string;
+          user_id: string;
+          company_id: string;
+          qr_token: string;
+          latitude: number;
+          longitude: number;
+          distance: number;
+          status: string;
+          device_info?: string | null;
+          ip_address?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          company_id?: string;
+          qr_token?: string;
+          latitude?: number;
+          longitude?: number;
+          distance?: number;
+          status?: string;
+          device_info?: string | null;
+          ip_address?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       qr_sessions: {
         Row: {
@@ -73,21 +184,64 @@ export interface Database {
           token: string;
           expires_at: string;
           active: boolean;
+          used_at: string | null;
+          created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["qr_sessions"]["Row"], "id">;
-        Update: Partial<Database["public"]["Tables"]["qr_sessions"]["Insert"]>;
+        Insert: {
+          id?: string;
+          company_id: string;
+          token: string;
+          expires_at: string;
+          active?: boolean;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string;
+          token?: string;
+          expires_at?: string;
+          active?: boolean;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       suspicious_logs: {
         Row: {
           id: string;
-          user_id: string;
+          user_id: string | null;
+          company_id: string;
           reason: string;
-          device: string;
-          ip: string;
+          device: string | null;
+          ip: string | null;
+          metadata: Json;
+          resolved: boolean;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["suspicious_logs"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["suspicious_logs"]["Insert"]>;
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          company_id: string;
+          reason: string;
+          device?: string | null;
+          ip?: string | null;
+          metadata?: Json;
+          resolved?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          company_id?: string;
+          reason?: string;
+          device?: string | null;
+          ip?: string | null;
+          metadata?: Json;
+          resolved?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
