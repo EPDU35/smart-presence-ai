@@ -71,6 +71,87 @@ async function resolveQrSession(
 }
 
 /**
+ * Pointage automatique GPS (sans scan QR) — uniquement si dans le rayon entreprise.
+ */
+export async function createAutoCheckinGps(
+  userId: string,
+  companyId: string,
+  latitude: number,
+  longitude: number,
+  deviceInfo?: string,
+): Promise<Checkin> {
+  const { data: existingToday } = await supabase
+    .from('checkins')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('company_id', companyId)
+    .eq('status', 'VALID')
+    .gte('created_at', TODAY_START())
+    .limit(1);
+
+  if (existingToday?.length) {
+    throw new Error('Vous avez déjà pointé aujourd\'hui');
+  }
+
+  const { data: company, error: companyError } = await supabase
+    .from('companies')
+    .select('latitude, longitude, radius, opening_time, closing_time')
+    .eq('id', companyId)
+    .single();
+
+  if (companyError || !company) {
+    throw new Error('Entreprise introuvable');
+  }
+
+  const distance = haversineDistance(
+    latitude,
+    longitude,
+    company.latitude,
+    company.longitude,
+  );
+
+  if (distance > company.radius) {
+    throw new Error(
+      `Vous êtes à ${Math.round(distance)}m (limite ${company.radius}m) — rapprochez-vous ou scannez le QR`,
+    );
+  }
+
+  const status = computeCheckinStatus(
+    distance,
+    company.radius,
+    isOutsideOpeningHours(
+      new Date(),
+      company.opening_time as string | null,
+      company.closing_time as string | null,
+    ),
+  );
+
+  const autoToken = `AUTO-GPS-${crypto.randomUUID()}`;
+
+  const { data: checkin, error: checkinError } = await supabase
+    .from('checkins')
+    .insert({
+      user_id: userId,
+      company_id: companyId,
+      qr_token: autoToken,
+      latitude,
+      longitude,
+      distance,
+      status,
+      device_info: deviceInfo ?? null,
+      ip_address: null,
+    })
+    .select()
+    .single();
+
+  if (checkinError || !checkin) {
+    throw new Error(checkinError?.message ?? 'Création du pointage automatique échouée');
+  }
+
+  return checkin as Checkin;
+}
+
+/**
  * Type retourné par getCheckinStats — agrégation côté JS depuis les données brutes.
  */
 interface CheckinStats {

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchTodayCheckins } from "@/services/checkin.service";
@@ -44,11 +44,16 @@ export function CheckinPage() {
   const { checkin, autoCheckin, isCheckingIn } = useCheckin({
     companyId: user?.company_id ?? "",
     userId: user?.id ?? "",
+    companyLat: company?.latitude,
+    companyLon: company?.longitude,
+    companyRadius: company?.radius,
     openingTime: company?.opening_time,
     closingTime: company?.closing_time,
   });
 
-  const gpsOk = !geoLoading && !geoError && !!latitude && !!longitude;
+  const autoAttemptedRef = useRef(false);
+
+  const gpsOk = !geoLoading && !geoError && latitude != null && longitude != null;
   const gpsGood = gpsOk && !!accuracy && accuracy <= 50;
 
   // Compute distance to check for auto-validation
@@ -64,12 +69,34 @@ export function CheckinPage() {
     return Math.max(0, Math.round((1 - ratio) * 100));
   }, [distance, company]);
 
-  // Validation automatique si la position correspond à 92% ou plus et pas encore pointé
-  useEffect(() => {
-    if (flowState === "idle" && gpsGood && distance !== null && company?.radius && positionSimilarity >= 92 && !loadingToday && !hasValidCheckinToday) {
-      handleAutoCheckin();
+  const canAutoCheckin = useMemo(() => {
+    if (!gpsOk || distance === null || !company?.radius || hasValidCheckinToday || loadingToday) {
+      return false;
     }
-  }, [flowState, gpsGood, distance, company, positionSimilarity, loadingToday, hasValidCheckinToday]);
+    return positionSimilarity >= 92 && distance <= company.radius;
+  }, [gpsOk, distance, company, positionSimilarity, hasValidCheckinToday, loadingToday]);
+
+  const knownPosition = useMemo(
+    () =>
+      latitude != null && longitude != null
+        ? { latitude, longitude, accuracy }
+        : undefined,
+    [latitude, longitude, accuracy],
+  );
+
+  const handleAutoCheckin = useCallback(async () => {
+    if (!canAutoCheckin || !knownPosition) return;
+    setFlowState("validating");
+    const res = await autoCheckin(knownPosition);
+    applyCheckinResult(res, "Présence enregistrée automatiquement");
+  }, [canAutoCheckin, knownPosition, autoCheckin]);
+
+  // Validation automatique dès que GPS OK + dans la zone (≥ 92 % similarité)
+  useEffect(() => {
+    if (flowState !== "idle" || !canAutoCheckin || autoAttemptedRef.current) return;
+    autoAttemptedRef.current = true;
+    void handleAutoCheckin();
+  }, [flowState, canAutoCheckin, handleAutoCheckin]);
 
   function applyCheckinResult(res: Awaited<ReturnType<typeof checkin>>, fallbackMessage: string) {
     const time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -93,12 +120,6 @@ export function CheckinPage() {
     setFlowState("error");
   }
 
-  async function handleAutoCheckin() {
-    setFlowState("validating");
-    const res = await autoCheckin();
-    applyCheckinResult(res, "Présence enregistrée automatiquement");
-  }
-
   async function handleScan(token: string) {
     setFlowState("validating");
     const res = await checkin(token);
@@ -108,6 +129,7 @@ export function CheckinPage() {
   function reset() {
     setFlowState("idle");
     setResult(null);
+    autoAttemptedRef.current = false;
   }
 
   return (
@@ -213,14 +235,14 @@ export function CheckinPage() {
                   </div>
                 </button>
                 
-                {distance !== null && positionSimilarity >= 92 && (
+                {canAutoCheckin && (
                   <button
-                    onClick={handleAutoCheckin}
-                    disabled={!!geoError || geoLoading}
-                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-success-500 py-4 text-white shadow-md hover:bg-success-600 active:scale-[0.98] transition-all"
+                    onClick={() => void handleAutoCheckin()}
+                    disabled={!!geoError || geoLoading || isCheckingIn}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-success-500 py-4 text-white shadow-md hover:bg-success-600 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
                     <Zap className="h-5 w-5 fill-current" />
-                    <span className="font-semibold">Validation Automatique ({positionSimilarity}%)</span>
+                    <span className="font-semibold">Validation automatique ({positionSimilarity}%)</span>
                   </button>
                 )}
 
@@ -307,7 +329,9 @@ export function CheckinPage() {
               </div>
             </div>
             {result.errorCode === "position" && (
-              <p className="mt-3 text-xs text-danger-600">Vous êtes hors de la zone autorisée. Rapprochez-vous de l'entreprise.</p>
+              <p className="mt-3 text-xs text-danger-600">
+                Vous êtes hors de la zone autorisée. Rapprochez-vous ou scannez le QR affiché par l&apos;admin.
+              </p>
             )}
             {result.errorCode === "expired" && (
               <p className="mt-3 text-xs text-danger-600">Le QR Code a expiré. Demandez un nouveau QR Code à votre administrateur.</p>
