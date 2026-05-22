@@ -1,35 +1,53 @@
 /**
  * device-trust-logic.ts
- * Gestion de la confiance des appareils (known/unknown device).
+ * Gestion de la confiance des appareils.
  *
- * BUG CORRIGÉ :
- * L'ancienne version appelait getFullDeviceFingerprint() sans await.
- * Résultat : fingerprint = "[object Promise]" stocké en base.
- * Tous les devices apparaissaient comme "nouveaux" à chaque login.
- * device-trust = 100% cassé silencieusement.
+ * BUG CORRIGÉ (version Yao) :
+ * ───────────────────────────
+ * Ligne 20 originale :
+ *   const fingerprint = getFullDeviceFingerprint();  // MANQUE await
  *
- * CORRECTION : toutes les fonctions sont async et await correctement.
+ * getFullDeviceFingerprint() est async (SHA-256 WebCrypto).
+ * Sans await → fingerprint = Promise { <pending> }.toString() = "[object Promise]"
+ * Stocké en base comme device_fingerprint → tous les devices matchaient "[object Promise]"
+ * → le premier device enregistré était marqué "trusted" pour TOUS les utilisateurs.
+ * Bug de sécurité critique : n'importe quel device passait comme "connu".
+ *
+ * Import corrigé :
+ * ─────────────────
+ * L'ancienne version importait getDeviceName depuis "@/utils/device" (version sync).
+ * On importe maintenant depuis "./fingerprint-generation" pour cohérence du module.
  */
 
 import { supabase } from "@/lib/supabase";
-import { getFullDeviceFingerprint, getDeviceName } from "./fingerprint-generation";
+import {
+  getFullDeviceFingerprint,
+  getDeviceName,
+} from "./fingerprint-generation";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export type DeviceTrustStatus = "TRUSTED" | "KNOWN_UNTRUSTED" | "NEW_DEVICE";
 
 export interface DeviceTrustResult {
-  status: DeviceTrustStatus;
+  status:    DeviceTrustStatus;
   deviceId?: string;
-  isNew: boolean;
+  isNew:     boolean;
 }
+
+// ─── Core ─────────────────────────────────────────────────────────────────────
 
 /**
  * Vérifie si l'appareil courant est connu et de confiance pour cet utilisateur.
  * Si l'appareil est nouveau, il est enregistré automatiquement (trusted = false).
  *
- * IMPORTANT : async car getFullDeviceFingerprint() utilise WebCrypto SHA-256.
+ * À appeler après login réussi dans useAuth.ts.
  */
-export async function checkAndRegisterDevice(userId: string): Promise<DeviceTrustResult> {
-  // CRITIQUE : await obligatoire — WebCrypto SHA-256 est async
+export async function checkAndRegisterDevice(
+  userId: string
+): Promise<DeviceTrustResult> {
+  // CRITIQUE : await obligatoire — SHA-256 WebCrypto est async
+  // Sans await → fingerprint = "[object Promise]" → bug de sécurité critique
   const fingerprint = await getFullDeviceFingerprint();
   const deviceName  = getDeviceName();
 
@@ -39,7 +57,7 @@ export async function checkAndRegisterDevice(userId: string): Promise<DeviceTrus
     .select("id, trusted")
     .eq("user_id", userId)
     .eq("device_fingerprint", fingerprint)
-    .single();
+    .maybeSingle(); // maybeSingle au lieu de single — pas d'erreur si absent
 
   if (existing) {
     // Device connu — mettre à jour last_login
@@ -49,57 +67,62 @@ export async function checkAndRegisterDevice(userId: string): Promise<DeviceTrus
       .eq("id", existing.id);
 
     return {
-      status: existing.trusted ? "TRUSTED" : "KNOWN_UNTRUSTED",
+      status:   existing.trusted ? "TRUSTED" : "KNOWN_UNTRUSTED",
       deviceId: existing.id,
-      isNew: false,
+      isNew:    false,
     };
   }
 
   // 2. Nouvel appareil — enregistrer avec trusted = false
   // SÉCURITÉ : trusted = false TOUJOURS à l'INSERT
-  // La RLS policies-devices.sql enforce ça côté DB aussi
-  const { data: newDevice } = await supabase
+  const { data: newDevice, error } = await supabase
     .from("devices")
     .insert({
-      user_id: userId,
-      device_name: deviceName,
+      user_id:            userId,
+      device_name:        deviceName,
       device_fingerprint: fingerprint,
-      trusted: false,
-      last_login: new Date().toISOString(),
+      trusted:            false,
+      last_login:         new Date().toISOString(),
     })
     .select("id")
     .single();
 
+  if (error) {
+    console.error("[DeviceTrust] Insert failed:", error.message);
+  }
+
   return {
-    status: "NEW_DEVICE",
+    status:   "NEW_DEVICE",
     deviceId: newDevice?.id,
-    isNew: true,
+    isNew:    true,
   };
 }
 
 /**
- * Vérifie le device sans l'enregistrer.
- * Utilisé pour les vérifications légères (ex: avant scan QR).
+ * Vérifie le trust sans enregistrer.
+ * Pour les vérifications légères (ex: avant scan QR).
  */
-export async function getDeviceTrustStatus(userId: string): Promise<DeviceTrustStatus> {
+export async function getDeviceTrustStatus(
+  userId: string
+): Promise<DeviceTrustStatus> {
   // CRITIQUE : await obligatoire
   const fingerprint = await getFullDeviceFingerprint();
 
   const { data } = await supabase
     .from("devices")
-    .select("id, trusted")
+    .select("trusted")
     .eq("user_id", userId)
     .eq("device_fingerprint", fingerprint)
     .maybeSingle();
 
-  if (!data)            return "NEW_DEVICE";
-  if (data.trusted)     return "TRUSTED";
+  if (!data)        return "NEW_DEVICE";
+  if (data.trusted) return "TRUSTED";
   return "KNOWN_UNTRUSTED";
 }
 
 /**
  * Marque un appareil comme de confiance.
- * Action réservée à l'ADMIN — vérifiée côté RLS.
+ * Action admin uniquement — RLS vérifie le rôle côté DB.
  */
 export async function trustDevice(deviceId: string): Promise<void> {
   await supabase
@@ -109,8 +132,8 @@ export async function trustDevice(deviceId: string): Promise<void> {
 }
 
 /**
- * Révoque la confiance d'un appareil (vol, perte, sécurité compromise).
- * Action réservée à l'ADMIN — vérifiée côté RLS.
+ * Révoque la confiance (vol, perte, compromission).
+ * Action admin uniquement.
  */
 export async function revokeDeviceTrust(deviceId: string): Promise<void> {
   await supabase
