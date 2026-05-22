@@ -26,6 +26,8 @@ export function SettingsPage() {
   const { user, company, setCompany, setUser } = useAuthStore();
   const isEmployee = isEmployeeRole(user?.role);
   const hasScheduleColumns = companyHasScheduleColumns(company);
+  const canEditCompanyField = (key: keyof Company) =>
+    !isEmployee && company != null && Object.prototype.hasOwnProperty.call(company, key);
   
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -124,23 +126,28 @@ export function SettingsPage() {
         const lngVal = Number(form.longitude);
         const toleranceVal = Number(form.late_tolerance);
 
-        const companyUpdates: Partial<Company> = {
-          name: form.name,
-          email: form.email,
-          phone: form.phone || null,
-          location: form.location || null,
-          radius: isNaN(radiusVal) ? company.radius : radiusVal,
-          latitude: isNaN(latVal) ? company.latitude : latVal,
-          longitude: isNaN(lngVal) ? company.longitude : lngVal,
-        };
+        const companyUpdates: Partial<Company> = {};
 
+        if (canEditCompanyField("name")) companyUpdates.name = form.name;
+        if (canEditCompanyField("email")) companyUpdates.email = form.email;
+        if (canEditCompanyField("phone")) companyUpdates.phone = form.phone || null;
+        if (canEditCompanyField("location")) companyUpdates.location = form.location || null;
+        if (canEditCompanyField("radius")) {
+          companyUpdates.radius = isNaN(radiusVal) ? company.radius : radiusVal;
+        }
+        if (canEditCompanyField("latitude")) {
+          companyUpdates.latitude = isNaN(latVal) ? company.latitude : latVal;
+        }
+        if (canEditCompanyField("longitude")) {
+          companyUpdates.longitude = isNaN(lngVal) ? company.longitude : lngVal;
+        }
         if (hasScheduleColumns) {
           companyUpdates.opening_time = form.opening_time || null;
           companyUpdates.closing_time = form.closing_time || null;
           companyUpdates.late_tolerance = isNaN(toleranceVal) ? company.late_tolerance : toleranceVal;
         }
 
-        const updatedCompany = await updateCompany(company.id, companyUpdates);
+        const updatedCompany = await updateCompany(company.id, companyUpdates, company);
         setCompany(updatedCompany);
       }
       setSaved(true);

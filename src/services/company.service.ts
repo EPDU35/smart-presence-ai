@@ -1,12 +1,24 @@
 import { supabase } from "@/lib/supabase";
 import type { Company } from "@/types";
 
+/** Colonnes qu'on ne met jamais à jour via l'API client */
+const READONLY_COMPANY_KEYS = new Set([
+  "id",
+  "code",
+  "created_at",
+  "updated_at",
+  "owner_id",
+  "plan",
+  "is_active",
+  "logo_url",
+]);
+
 export async function createCompany(
-  name:     string,
+  name: string,
   location: string,
-  lat:      number,
-  lng:      number,
-  ownerId:  string
+  lat: number,
+  lng: number,
+  ownerId: string
 ): Promise<Company> {
   const code = generateCompanyCode();
 
@@ -15,12 +27,12 @@ export async function createCompany(
     .insert({
       name,
       location,
-      latitude:  lat,
+      latitude: lat,
       longitude: lng,
-      owner_id:  ownerId,
+      owner_id: ownerId,
       code,
       radius: 100,
-      plan:   "starter",
+      plan: "starter",
     })
     .select()
     .single();
@@ -51,58 +63,80 @@ export async function fetchCompanyByCode(code: string): Promise<Company | null> 
   return data as Company;
 }
 
-const SCHEDULE_COLUMNS = ["opening_time", "closing_time", "late_tolerance"] as const;
-
-function isMissingColumnError(message: string): boolean {
-  return SCHEDULE_COLUMNS.some((col) => message.includes(col));
-}
-
-/** Colonnes toujours présentes dans le schéma companies de base */
-function buildCoreCompanyPayload(updates: Partial<Company>): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
-  if (updates.name !== undefined) payload.name = updates.name;
-  if (updates.email !== undefined) payload.email = updates.email;
-  if (updates.phone !== undefined) payload.phone = updates.phone;
-  if (updates.location !== undefined) payload.location = updates.location;
-  if (updates.radius !== undefined) payload.radius = updates.radius;
-  if (updates.latitude !== undefined) payload.latitude = updates.latitude;
-  if (updates.longitude !== undefined) payload.longitude = updates.longitude;
-  return payload;
-}
-
-function buildSchedulePayload(updates: Partial<Company>): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
-  if (updates.opening_time !== undefined) payload.opening_time = updates.opening_time;
-  if (updates.closing_time !== undefined) payload.closing_time = updates.closing_time;
-  if (updates.late_tolerance !== undefined) payload.late_tolerance = updates.late_tolerance;
-  return payload;
+/** Clés réellement renvoyées par Supabase pour cette ligne (schéma déployé) */
+export function getUpdatableCompanyKeys(company: Company | null): (keyof Company)[] {
+  if (!company) return ["name", "latitude", "longitude", "radius"];
+  return (Object.keys(company) as (keyof Company)[]).filter(
+    (key) => !READONLY_COMPANY_KEYS.has(key)
+  );
 }
 
 export function companyHasScheduleColumns(company: Company | null): boolean {
   if (!company) return false;
   return (
-    Object.prototype.hasOwnProperty.call(company, "opening_time") ||
-    Object.prototype.hasOwnProperty.call(company, "closing_time") ||
-    Object.prototype.hasOwnProperty.call(company, "late_tolerance")
+    Object.prototype.hasOwnProperty.call(company, "opening_time") &&
+    Object.prototype.hasOwnProperty.call(company, "closing_time")
   );
+}
+
+function buildPayloadFromExisting(
+  updates: Partial<Company>,
+  existing: Company | null
+): Record<string, unknown> {
+  const allowed = new Set(getUpdatableCompanyKeys(existing));
+  const payload: Record<string, unknown> = {};
+
+  for (const key of Object.keys(updates) as (keyof Company)[]) {
+    if (!allowed.has(key)) continue;
+    const value = updates[key];
+    if (value !== undefined) payload[key] = value;
+  }
+
+  return payload;
+}
+
+function extractMissingColumn(message: string): string | null {
+  const schemaCache = message.match(/Could not find the '([^']+)' column of 'companies'/i);
+  if (schemaCache) return schemaCache[1];
+  const pg = message.match(/column "([^"]+)" of relation "companies"/i);
+  if (pg) return pg[1];
+  return null;
 }
 
 export async function updateCompany(
   id: string,
-  updates: Partial<Company>
+  updates: Partial<Company>,
+  existingCompany?: Company | null
 ): Promise<Company> {
-  const core = buildCoreCompanyPayload(updates);
-  const schedule = buildSchedulePayload(updates);
-  const fullPayload = { ...core, ...schedule };
+  let payload = buildPayloadFromExisting(updates, existingCompany ?? null);
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error("Aucun champ modifiable à enregistrer");
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const patch = (payload: Record<string, unknown>) =>
-    supabase.from("companies").update(payload as any).eq("id", id).select().single();
+  const patch = (body: Record<string, unknown>) =>
+    supabase.from("companies").update(body as any).eq("id", id).select().single();
 
-  let result = await patch(fullPayload);
+  let result = await patch(payload);
 
-  if (result.error && isMissingColumnError(result.error.message)) {
-    result = await patch(core);
+  // Retire colonne par colonne si le schéma Supabase n'est pas à jour
+  let guard = 0;
+  while (result.error && guard < 12) {
+    const missing = extractMissingColumn(result.error.message);
+    if (!missing || !(missing in payload)) {
+      throw new Error(result.error.message);
+    }
+    const next = { ...payload };
+    delete next[missing];
+    payload = next;
+    if (Object.keys(payload).length === 0) {
+      throw new Error(
+        "Schéma Supabase incomplet — exécutez supabase-schema-additions.sql dans le SQL Editor"
+      );
+    }
+    result = await patch(payload);
+    guard++;
   }
 
   if (result.error) throw new Error(result.error.message);
