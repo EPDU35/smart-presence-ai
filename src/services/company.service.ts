@@ -116,7 +116,12 @@ export async function updateCompany(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const patch = (body: Record<string, unknown>) =>
-    supabase.from("companies").update(body as any).eq("id", id).select().single();
+    supabase
+      .from("companies")
+      .update({ ...body, updated_at: new Date().toISOString() } as any)
+      .eq("id", id)
+      .select()
+      .single();
 
   let result = await patch(payload);
 

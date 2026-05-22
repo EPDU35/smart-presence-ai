@@ -54,7 +54,7 @@ export function CheckinPage() {
   const autoAttemptedRef = useRef(false);
 
   const gpsOk = !geoLoading && !geoError && latitude != null && longitude != null;
-  const gpsGood = gpsOk && !!accuracy && accuracy <= 50;
+  const gpsGood = gpsOk && !!accuracy && accuracy <= 150;
 
   // Compute distance to check for auto-validation
   const distance = useMemo(() => {
@@ -91,12 +91,33 @@ export function CheckinPage() {
     applyCheckinResult(res, "Présence enregistrée automatiquement");
   }, [canAutoCheckin, knownPosition, autoCheckin]);
 
-  // Validation automatique dès que GPS OK + dans la zone (≥ 92 % similarité)
+  // Validation automatique : gpsOk (pas gpsGood) + dans la zone (≥ 92 % similarité)
   useEffect(() => {
-    if (flowState !== "idle" || !canAutoCheckin || autoAttemptedRef.current) return;
+    if (
+      flowState !== "idle" ||
+      !gpsOk ||
+      distance === null ||
+      !company?.radius ||
+      positionSimilarity < 92 ||
+      distance > company.radius ||
+      hasValidCheckinToday ||
+      loadingToday ||
+      autoAttemptedRef.current
+    ) {
+      return;
+    }
     autoAttemptedRef.current = true;
     void handleAutoCheckin();
-  }, [flowState, canAutoCheckin, handleAutoCheckin]);
+  }, [
+    flowState,
+    gpsOk,
+    distance,
+    company,
+    positionSimilarity,
+    hasValidCheckinToday,
+    loadingToday,
+    handleAutoCheckin,
+  ]);
 
   function applyCheckinResult(res: Awaited<ReturnType<typeof checkin>>, fallbackMessage: string) {
     const time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
