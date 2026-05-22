@@ -6,30 +6,33 @@
 
 CREATE TABLE companies (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  -- Nom de la société affiché dans l'UI et les rapports
-  name            text        NOT NULL CHECK (char_length(name) BETWEEN 2 AND 255),
-
-  -- owner_id : UUID de l'admin fondateur — FK ajoutée APRÈS création de users (voir users.sql)
-  -- Nullable temporairement pour permettre l'INSERT initial avant d'avoir l'user
-  owner_id        uuid        NULL,
-
-  -- Coordonnées GPS du site principal pour la validation de présence géolocalisée
-  latitude        numeric(10, 7)  NOT NULL,
-  longitude       numeric(10, 7)  NOT NULL,
-
-  -- Rayon en mètres autour du point GPS dans lequel un check-in est considéré valide
-  radius_meters   integer     NOT NULL DEFAULT 100 CHECK (radius_meters > 0),
+  name            text        NOT NULL,
+  code            text        NOT NULL UNIQUE,
+  email           text,
+  phone           text,
+  location        text,
+  latitude        float       NOT NULL DEFAULT 0,
+  longitude       float       NOT NULL DEFAULT 0,
+  radius          integer     NOT NULL DEFAULT 100 CHECK (radius > 0),
   opening_time    time        NULL,
   closing_time    time        NULL,
   late_tolerance  integer     NULL CHECK (late_tolerance >= 0),
-
-  created_at      timestamptz NOT NULL DEFAULT now()
+  plan            text        NOT NULL DEFAULT 'starter' CHECK (plan IN ('starter','pro','enterprise')),
+  owner_id        uuid        NULL,
+  logo_url        text,
+  is_active       boolean     NOT NULL DEFAULT true,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
 -- Index sur owner_id anticipant les lookups "mes entreprises"
 CREATE INDEX idx_companies_owner_id ON companies(owner_id);
+CREATE INDEX idx_companies_code ON companies(code);
+CREATE INDEX idx_companies_is_active ON companies(is_active) WHERE is_active = true;
 
 COMMENT ON TABLE  companies                IS 'Entité racine multi-tenant. Chaque ressource sensible porte un company_id.';
+COMMENT ON COLUMN companies.code           IS 'Code unique format SP-XXXXXX pour invitations.';
 COMMENT ON COLUMN companies.owner_id       IS 'FK vers users(id) ajoutée en différé dans users.sql pour éviter la circularité.';
-COMMENT ON COLUMN companies.radius_meters  IS 'Périmètre géofencing. Check-in refusé si distance > radius_meters.';
+COMMENT ON COLUMN companies.radius         IS 'Rayon GPS autorisé en mètres.';
+COMMENT ON COLUMN companies.is_active      IS 'Indique si la société est active.';
+COMMENT ON COLUMN companies.updated_at     IS 'Horodatage de la dernière modification.';

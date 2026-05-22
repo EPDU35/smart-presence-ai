@@ -50,14 +50,39 @@ export async function fetchCompany(id: string): Promise<Company | null> {
    FETCH COMPANY BY CODE (pour rejoindre)
 ───────────────────────────────────────── */
 export async function fetchCompanyByCode(code: string): Promise<Company | null> {
-  const { data, error } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("code", code.toUpperCase())
-    .single();
+  const cleaned = code?.toString().trim();
+  if (!cleaned) return null;
 
-  if (error || !data) return null;
-  return data as Company;
+  // Try exact match (normalized)
+  try {
+    const { data, error } = await supabase
+      .from("companies")
+      .select("*")
+      .eq("code", cleaned.toUpperCase())
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Supabase error (exact): ${error.message}`);
+    }
+    if (data) return data as Company;
+
+    // Fallback: case-insensitive match (in case the DB stores different casing)
+    const { data: data2, error: error2 } = await supabase
+      .from("companies")
+      .select("*")
+      .ilike("code", cleaned)
+      .maybeSingle();
+
+    if (error2) {
+      throw new Error(`Supabase error (ilike): ${error2.message}`);
+    }
+    if (data2) return data2 as Company;
+  } catch (err) {
+    // Unexpected JS error — rethrow so callers can handle/display it
+    console.error("fetchCompanyByCode unexpected error", err);
+    throw err;
+  }
+
 }
 
 /* ─────────────────────────────────────────

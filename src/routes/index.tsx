@@ -21,6 +21,7 @@ import { ForgotPasswordPage } from "@/pages/Auth/ForgotPasswordPage";
 
 // Pages authentifiées — Admin
 import { DashboardPage }  from "@/pages/Dashboard/DashboardPage";
+import { EmployeeDashboardPage } from "@/pages/Employee/EmployeeDashboardPage";
 import { EmployeesPage }  from "@/pages/Employees/EmployeesPage";
 import { AttendancePage } from "@/pages/Attendance/AttendancePage";
 import { LivePage }       from "@/pages/Live/LivePage";
@@ -96,6 +97,15 @@ function EmployeeRoute() {
   return <Outlet />;
 }
 
+function DashboardSelector() {
+  const user = useAuthStore((s) => s.user);
+
+  if (user?.role === "EMPLOYEE") {
+    return <EmployeeDashboardPage />;
+  }
+  return <DashboardPage />;
+}
+
 // ─── PublicOnlyRoute ──────────────────────────────────────────────────────────
 // Login/Register — redirige vers /dashboard si déjà connecté
 
@@ -131,7 +141,8 @@ export function AppRouter() {
             <Route element={<DashboardLayout />}>
 
               {/* Tous les rôles */}
-              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardSelector />} />
+              <Route path="/checkin" element={<CheckinPage />} />
 
               {/* Admin + Manager + Super Admin */}
               <Route element={<RoleRoute roles={["ADMIN", "SUPER_ADMIN"]} />}>
@@ -154,7 +165,6 @@ export function AppRouter() {
           <Route element={<ProtectedRoute />}>
             <Route element={<EmployeeRoute />}>
               <Route element={<DashboardLayout />}>
-                <Route path="/checkin" element={<CheckinPage />} />
                 <Route path="/history" element={<HistoryPage />} />
               </Route>
             </Route>
