@@ -84,6 +84,8 @@ export interface Database {
           avatar: string | null;
           is_active: boolean;
           last_seen: string | null;
+          two_fa_enabled: boolean;
+          two_fa_channel: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -98,6 +100,8 @@ export interface Database {
           avatar?: string | null;
           is_active?: boolean;
           last_seen?: string | null;
+          two_fa_enabled?: boolean;
+          two_fa_channel?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -112,6 +116,8 @@ export interface Database {
           avatar?: string | null;
           is_active?: boolean;
           last_seen?: string | null;
+          two_fa_enabled?: boolean;
+          two_fa_channel?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -125,6 +131,7 @@ export interface Database {
           device_fingerprint: string;
           last_login: string;
           trusted: boolean;
+          created_at: string;
         };
         Insert: {
           id?: string;
@@ -133,6 +140,7 @@ export interface Database {
           device_fingerprint: string;
           last_login?: string;
           trusted?: boolean;
+          created_at?: string;
         };
         Update: {
           id?: string;
@@ -141,6 +149,7 @@ export interface Database {
           device_fingerprint?: string;
           last_login?: string;
           trusted?: boolean;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -149,12 +158,13 @@ export interface Database {
           id: string;
           user_id: string;
           company_id: string;
+          qr_session_id: string | null;
           qr_token: string;
           latitude: number;
           longitude: number;
           distance: number;
           status: string;
-          device_info: string | null;
+          device_info: Json | null;
           ip_address: string | null;
           created_at: string;
         };
@@ -162,12 +172,13 @@ export interface Database {
           id?: string;
           user_id: string;
           company_id: string;
-          qr_token: string;
-          latitude: number;
-          longitude: number;
-          distance: number;
-          status: string;
-          device_info?: string | null;
+          qr_session_id?: string | null;
+          qr_token?: string;
+          latitude?: number;
+          longitude?: number;
+          distance?: number;
+          status?: string;
+          device_info?: Json | null;
           ip_address?: string | null;
           created_at?: string;
         };
@@ -175,12 +186,13 @@ export interface Database {
           id?: string;
           user_id?: string;
           company_id?: string;
+          qr_session_id?: string | null;
           qr_token?: string;
           latitude?: number;
           longitude?: number;
           distance?: number;
           status?: string;
-          device_info?: string | null;
+          device_info?: Json | null;
           ip_address?: string | null;
           created_at?: string;
         };
@@ -248,6 +260,75 @@ export interface Database {
           ip?: string | null;
           metadata?: Json;
           resolved?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      otp_codes: {
+        Row: {
+          id: string;
+          user_id: string;
+          code_hash: string;
+          channel: string;
+          expires_at: string;
+          attempts: number;
+          used: boolean;
+          used_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          code_hash: string;
+          channel: string;
+          expires_at: string;
+          attempts?: number;
+          used?: boolean;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          code_hash?: string;
+          channel?: string;
+          expires_at?: string;
+          attempts?: number;
+          used?: boolean;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      absences: {
+        Row: {
+          id: string;
+          user_id: string;
+          company_id: string;
+          start_ts: string;
+          end_ts: string;
+          duration_minutes: number;
+          reason: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          company_id: string;
+          start_ts: string;
+          end_ts: string;
+          duration_minutes: number;
+          reason: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          company_id?: string;
+          start_ts?: string;
+          end_ts?: string;
+          duration_minutes?: number;
+          reason?: string;
           created_at?: string;
         };
         Relationships: [];
