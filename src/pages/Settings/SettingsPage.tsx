@@ -30,6 +30,7 @@ export function SettingsPage() {
     longitude: company?.longitude ?? 0,
     location: "",
     opening_time: company?.opening_time ?? "08:00",
+    closing_time: company?.closing_time ?? "18:00",
     late_tolerance: company?.late_tolerance ?? 15,
   });
 
@@ -82,6 +83,7 @@ export function SettingsPage() {
           latitude: isNaN(latVal) ? company.latitude : latVal,
           longitude: isNaN(lngVal) ? company.longitude : lngVal,
           opening_time: form.opening_time || null,
+          closing_time: form.closing_time || null,
           late_tolerance: isNaN(toleranceVal) ? (company.late_tolerance ?? 15) : toleranceVal,
         });
         setCompany(updatedCompany);
@@ -244,7 +246,7 @@ export function SettingsPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <Input type="time" label="Heure d'ouverture" value={form.opening_time} onChange={(e) => updateField("opening_time", e.target.value)} />
-                <Input type="time" label="Heure de fin (info)" defaultValue="18:00" />
+                <Input type="time" label="Heure de fermeture" value={form.closing_time} onChange={(e) => updateField("closing_time", e.target.value)} />
               </div>
 
               <div>

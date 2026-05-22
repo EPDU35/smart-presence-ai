@@ -47,6 +47,7 @@ export function CheckinPage() {
     companyLon: company?.longitude ?? 0,
     radius: company?.radius ?? 200,
     openingTime: company?.opening_time,
+    closingTime: company?.closing_time,
     lateTolerance: company?.late_tolerance,
   });
 
