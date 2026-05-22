@@ -43,9 +43,6 @@ export async function fetchAbsencesByUser(userId: string): Promise<Absence[]> {
 }
 
 export async function createAbsence(absence: AbsenceInsert): Promise<Absence> {
-  // Correction de l'erreur TS2345 :
-  // Supabase inférait le type Insert comme 'never[]' car la table n'existait
-  // pas dans database.types.ts. Maintenant qu'elle y est, le cast est correct.
   const { data, error } = await supabase
     .from("absences")
     .insert(absence)
@@ -62,4 +59,81 @@ export async function deleteAbsence(id: string): Promise<void> {
     .delete()
     .eq("id", id);
   if (error) throw error;
+}
+
+/**
+ * detectAndPersistAbsences
+ * ─────────────────────────
+ * Détecte les employés qui n'ont pas pointé aujourd'hui
+ * et insère une absence automatique pour chacun.
+ *
+ * Appelé par run-detect-absences.ts (script cron ou Edge Function scheduled).
+ *
+ * LOGIQUE :
+ * 1. Récupère tous les users actifs de la company
+ * 2. Récupère tous les checkins valides d'aujourd'hui
+ * 3. Pour chaque user sans checkin → insère une absence
+ *
+ * @param companyId - ID de l'organisation concernée
+ * @returns Nombre d'absences créées
+ */
+export async function detectAndPersistAbsences(
+  companyId: string
+): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  // 1. Récupérer tous les users actifs de la company
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("is_active", true);
+
+  if (usersError || !users?.length) return 0;
+
+  // 2. Récupérer les checkins valides ou retards d'aujourd'hui
+  const { data: checkins } = await supabase
+    .from("checkins")
+    .select("user_id")
+    .eq("company_id", companyId)
+    .in("status", ["VALID", "LATE"])
+    .gte("created_at", todayStart.toISOString())
+    .lte("created_at", todayEnd.toISOString());
+
+  const presentUserIds = new Set(
+    (checkins ?? []).map((c: { user_id: string }) => c.user_id)
+  );
+
+  // 3. Identifier les absents
+  const absentUsers = users.filter(
+    (u: { id: string }) => !presentUserIds.has(u.id)
+  );
+
+  if (!absentUsers.length) return 0;
+
+  // 4. Insérer les absences — ignorer les doublons (upsert-like via insert + on conflict)
+  const absences: AbsenceInsert[] = absentUsers.map(
+    (u: { id: string }) => ({
+      user_id:          u.id,
+      company_id:       companyId,
+      start_ts:         todayStart.toISOString(),
+      end_ts:           todayEnd.toISOString(),
+      duration_minutes: 480, // 8h par défaut — ajustable selon opening/closing_time
+      reason:           "ABSENT_AUTO_DETECTED",
+    })
+  );
+
+  const { error: insertError } = await supabase
+    .from("absences")
+    .insert(absences);
+
+  if (insertError) {
+    console.error("[detectAndPersistAbsences] Insert error:", insertError.message);
+    return 0;
+  }
+
+  return absentUsers.length;
 }
