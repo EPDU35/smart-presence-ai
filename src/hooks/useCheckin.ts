@@ -1,13 +1,14 @@
 /**
- * useCheckin.ts
- * Hook de check-in — utilise createCheckin() aligné sur le schéma Supabase
- * (qr_token, latitude, longitude, distance, status VALID/INVALID/SUSPICIOUS).
+ * useCheckin.ts — pointage via createCheckin() + validation QR/GPS
  */
 
 import { useState, useCallback } from "react";
 import { createCheckin } from "@/database/services/checkin.service";
 import { getValidatedPosition } from "@/security/geo/gps-validation";
 import { getFullDeviceFingerprint, getDeviceName } from "@/security/device/fingerprint-generation";
+import { normalizeQrToken } from "@/utils/qr-token";
+import { isOutsideOpeningHours } from "@/utils/attendance-hours";
+import { supabase } from "@/lib/supabase";
 import type { CheckinStatus } from "@/types";
 
 export interface CheckinResult {
@@ -22,12 +23,8 @@ export interface CheckinResult {
 export interface UseCheckinParams {
   companyId: string;
   userId?: string;
-  companyLat?: number;
-  companyLon?: number;
-  radius?: number;
   openingTime?: string | null;
   closingTime?: string | null;
-  lateTolerance?: number | null;
 }
 
 export interface UseCheckinReturn {
@@ -43,20 +40,19 @@ function mapGpsError(reason?: string): string {
   const msgs: Record<string, string> = {
     GPS_NOT_SUPPORTED: "GPS non supporté sur cet appareil",
     GPS_PERMISSION_DENIED: "Permission GPS refusée — activez la localisation",
-    GPS_ACCURACY_TOO_LOW: "Signal GPS trop faible — déplacez-vous vers une fenêtre",
+    GPS_ACCURACY_TOO_LOW: "Signal GPS trop faible",
     GPS_INVALID_COORDINATES: "Coordonnées GPS invalides",
     GPS_POSITION_UNAVAILABLE: "Position GPS indisponible",
-    GPS_TIMEOUT: "Timeout GPS — réessayez en extérieur",
+    GPS_TIMEOUT: "Timeout GPS — réessayez",
   };
   return msgs[reason ?? ""] ?? "Erreur GPS inconnue";
 }
 
 function mapCheckinError(message: string): CheckinResult {
   let code = "CHECKIN_FAILED";
-  if (message.includes("Token QR") || message.includes("QR")) code = "INVALID_TOKEN";
-  else if (message.includes("expir")) code = "TOKEN_EXPIRED";
+  if (message.includes("expir") || message.includes("remplacé")) code = "TOKEN_EXPIRED";
   else if (message.includes("déjà")) code = "ALREADY_CHECKED_IN";
-  else if (message.includes("consommer") || message.includes("double")) code = "TOKEN_USED";
+  else if (message.includes("QR") || message.includes("inconnu")) code = "INVALID_TOKEN";
   return { success: false, distance: 0, code, message };
 }
 
@@ -69,54 +65,47 @@ export function useCheckin(params?: UseCheckinParams): UseCheckinReturn {
     async (qrToken: string): Promise<CheckinResult> => {
       const userId = params?.userId;
       if (!userId) {
-        return {
-          success: false,
-          distance: 0,
-          code: "NOT_AUTHENTICATED",
-          message: "Session expirée — reconnectez-vous",
-        };
+        return { success: false, distance: 0, code: "NOT_AUTHENTICATED", message: "Session expirée" };
       }
 
       const gpsResult = await getValidatedPosition();
       if (!gpsResult.valid) {
-        const message = mapGpsError(gpsResult.reason);
-        return { success: false, distance: 0, code: gpsResult.reason, message };
+        return { success: false, distance: 0, code: gpsResult.reason, message: mapGpsError(gpsResult.reason) };
       }
       const { latitude, longitude } = gpsResult;
       if (latitude == null || longitude == null) {
-        return {
-          success: false,
-          distance: 0,
-          code: "GPS_INVALID_COORDINATES",
-          message: "Coordonnées GPS invalides",
-        };
+        return { success: false, distance: 0, code: "GPS_INVALID", message: "Coordonnées GPS invalides" };
       }
 
-      const fingerprint = await getFullDeviceFingerprint().catch(() => "unknown");
-      const deviceName = getDeviceName();
       const deviceInfo = JSON.stringify({
-        name: deviceName,
-        fingerprint: fingerprint.slice(0, 16),
-        ua: navigator.userAgent.slice(0, 120),
+        name: getDeviceName(),
+        fingerprint: (await getFullDeviceFingerprint().catch(() => "unknown")).slice(0, 16),
       });
 
       try {
-        const inserted = await createCheckin(userId, {
-          qrToken,
-          latitude,
-          longitude,
-          deviceInfo,
-        });
+        const inserted = await createCheckin(
+          userId,
+          {
+            qrToken: normalizeQrToken(qrToken),
+            latitude,
+            longitude,
+            deviceInfo,
+          },
+          { companyId: params?.companyId },
+        );
 
+        const outsideHours = isOutsideOpeningHours(new Date(), params?.openingTime, params?.closingTime);
         const message =
           inserted.status === "VALID"
-            ? "Présence enregistrée avec succès"
+            ? outsideHours
+              ? "Présence enregistrée (hors heures d'ouverture)"
+              : "Présence enregistrée avec succès"
             : inserted.status === "SUSPICIOUS"
               ? "Présence enregistrée — position à vérifier"
-              : "Pointage enregistré hors zone";
+              : "Pointage refusé — hors zone autorisée";
 
         return {
-          success: inserted.status === "VALID" || inserted.status === "SUSPICIOUS",
+          success: inserted.status === "VALID",
           status: inserted.status,
           checkinId: inserted.id,
           distance: inserted.distance,
@@ -128,23 +117,17 @@ export function useCheckin(params?: UseCheckinParams): UseCheckinReturn {
         return mapCheckinError(message);
       }
     },
-    [params?.userId],
+    [params?.userId, params?.companyId, params?.openingTime, params?.closingTime],
   );
 
   const checkin = useCallback(
-    async (qrToken: string): Promise<CheckinResult> => {
+    async (qrToken: string) => {
       setIsCheckingIn(true);
       setError(null);
       try {
         const result = await performCheckin(qrToken);
         setLastResult(result);
         if (!result.success) setError(result.message ?? "Pointage refusé");
-        return result;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur inattendue";
-        const result: CheckinResult = { success: false, distance: 0, code: "UNEXPECTED_ERROR", message };
-        setError(message);
-        setLastResult(result);
         return result;
       } finally {
         setIsCheckingIn(false);
@@ -153,17 +136,41 @@ export function useCheckin(params?: UseCheckinParams): UseCheckinReturn {
     [performCheckin],
   );
 
-  const autoCheckin = useCallback(async (): Promise<CheckinResult> => {
-    const result: CheckinResult = {
-      success: false,
-      distance: 0,
-      code: "QR_REQUIRED",
-      message: "Le pointage automatique nécessite un QR Code — scannez le code affiché par l'admin",
-    };
-    setError(result.message ?? "QR Code requis");
-    setLastResult(result);
-    return result;
-  }, []);
+  const autoCheckin = useCallback(async () => {
+    setIsCheckingIn(true);
+    setError(null);
+    try {
+      const companyId = params?.companyId;
+      if (!companyId) {
+        return { success: false, distance: 0, message: "Aucune entreprise associée" };
+      }
+
+      const { data: activeQr } = await supabase
+        .from("qr_sessions")
+        .select("token")
+        .eq("company_id", companyId)
+        .eq("active", true)
+        .is("used_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!activeQr?.token) {
+        const r = { success: false, distance: 0, message: "Aucun QR actif — affichez l'écran QR admin" };
+        setLastResult(r);
+        setError(r.message);
+        return r;
+      }
+
+      const result = await performCheckin(activeQr.token);
+      setLastResult(result);
+      if (!result.success) setError(result.message ?? "Échec");
+      return result;
+    } finally {
+      setIsCheckingIn(false);
+    }
+  }, [params?.companyId, performCheckin]);
 
   const reset = useCallback(() => {
     setError(null);

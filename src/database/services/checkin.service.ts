@@ -10,6 +10,8 @@ import type { Checkin, CheckinStatus } from '@/types';
 // entre deux points GPS. NE PAS recalculer ici : cette fonction est la source
 // de vérité pour les distances dans tout le projet (cf. Erreur critique 6).
 import { haversineDistance } from '@/utils/geo';
+import { qrTokenLookupVariants } from '@/utils/qr-token';
+import { computeCheckinStatus, isOutsideOpeningHours } from '@/utils/attendance-hours';
 
 // Début de la journée courante — factory function (pas une constante statique)
 // car si le service reste en mémoire après minuit, une constante statique
@@ -27,6 +29,45 @@ interface CreateCheckinInput {
   longitude: number;
   deviceInfo?: string;
   ipAddress?: string;
+}
+
+interface QrSessionRow {
+  id: string;
+  company_id: string;
+  expires_at: string;
+  active: boolean;
+  used_at: string | null;
+}
+
+async function resolveQrSession(
+  rawToken: string,
+  companyId?: string,
+): Promise<QrSessionRow> {
+  for (const token of qrTokenLookupVariants(rawToken)) {
+    let query = supabase
+      .from('qr_sessions')
+      .select('id, company_id, expires_at, active, used_at')
+      .eq('token', token);
+
+    if (companyId) query = query.eq('company_id', companyId);
+
+    const { data, error } = await query.maybeSingle();
+    if (error || !data) continue;
+
+    const row = data as QrSessionRow;
+    if (row.used_at) {
+      throw new Error('Ce QR code a déjà été utilisé — scannez le QR actuel à l\'écran admin');
+    }
+    if (!row.active) {
+      throw new Error('QR code remplacé — scannez le nouveau code affiché à l\'écran');
+    }
+    if (new Date(row.expires_at) < new Date()) {
+      throw new Error('QR code expiré — demandez un nouveau code à l\'admin');
+    }
+    return row;
+  }
+
+  throw new Error('QR code inconnu — scannez le code affiché actuellement sur l\'écran admin');
 }
 
 /**
@@ -72,26 +113,21 @@ interface CheckinWithUser extends Checkin {
 export async function createCheckin(
   userId: string,
   input: CreateCheckinInput,
+  options?: { companyId?: string },
 ): Promise<Checkin> {
-  // ── Étape 1 : Validation du token QR ──────────────────────────────────
-  // On vérifie que le token existe, est encore actif, et n'a pas été consommé.
-  // used_at IS NULL est la garantie anti-replay (SEC-03).
-  const { data: session, error: sessionError } = await supabase
-    .from('qr_sessions')
-    .select('id, company_id, expires_at, active, used_at')
-    .eq('token', input.qrToken)
-    .eq('active', true)
-    .is('used_at', null)
-    .single();
+  const session = await resolveQrSession(input.qrToken, options?.companyId);
 
-  if (sessionError || !session) {
-    throw new Error('Token QR invalide, expiré ou déjà utilisé');
-  }
+  const { data: existingToday } = await supabase
+    .from('checkins')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('company_id', session.company_id)
+    .eq('status', 'VALID')
+    .gte('created_at', TODAY_START())
+    .limit(1);
 
-  // Vérification temporelle : le token peut être "actif" en base mais
-  // déjà expiré si le cleanup n'a pas encore tournéé
-  if (new Date(session.expires_at) < new Date()) {
-    throw new Error('Token QR expiré');
+  if (existingToday?.length) {
+    throw new Error('Vous avez déjà pointé aujourd\'hui');
   }
 
   // ── Étape 2 : Récupération des coordonnées de référence ───────────────
@@ -99,7 +135,7 @@ export async function createCheckin(
   // pas du client. C'est la source de vérité pour la validation GPS (SEC-04).
   const { data: company, error: companyError } = await supabase
     .from('companies')
-    .select('latitude, longitude, radius')
+    .select('latitude, longitude, radius, opening_time, closing_time')
     .eq('id', session.company_id)
     .single();
 
@@ -126,27 +162,33 @@ export async function createCheckin(
   // - distance > radius mais < radius*3 → SUSPICIOUS (probablement GPS imprécis
   //   ou légèrement hors zone — on log mais on n'invalide pas brutalement)
   // - distance > radius*3 → INVALID (clairement hors zone ou GPS falsifié)
-  let status: CheckinStatus;
-  if (distance <= company.radius) {
-    status = 'VALID';
-  } else if (distance <= company.radius * 3) {
-    status = 'SUSPICIOUS';
-  } else {
-    status = 'INVALID';
-  }
+  const status = computeCheckinStatus(
+    distance,
+    company.radius,
+    isOutsideOpeningHours(
+      new Date(),
+      company.opening_time as string | null,
+      company.closing_time as string | null,
+    ),
+  );
 
   // ── Étape 5 : Marquage du token comme consommé ────────────────────────
   // On marque AVANT d'insérer le checkin pour éviter la race condition :
   // si deux requêtes arrivent simultanément avec le même token, la deuxième
   // trouvera used_at renseigné et sera rejetée à l'étape 1.
-  const { error: updateError } = await supabase
+  const { data: consumed, error: updateError } = await supabase
     .from('qr_sessions')
     .update({ used_at: new Date().toISOString(), active: false })
     .eq('id', session.id)
-    .is('used_at', null); // Condition de garde : toujours vérifier au moment du UPDATE
+    .is('used_at', null)
+    .select('id')
+    .maybeSingle();
 
   if (updateError) {
-    throw new Error('Impossible de consommer le token — possible double scan');
+    throw new Error('Impossible de valider le QR — exécutez supabase/fix-qr-consume-rls.sql');
+  }
+  if (!consumed) {
+    throw new Error('Ce QR a déjà été scanné — utilisez le code actuel à l\'écran');
   }
 
   // ── Étape 6 : Insertion du checkin ────────────────────────────────────
@@ -155,7 +197,7 @@ export async function createCheckin(
     .insert({
       user_id: userId,
       company_id: session.company_id,
-      qr_token: input.qrToken,
+      qr_token: qrTokenLookupVariants(input.qrToken)[0],
       latitude: input.latitude,
       longitude: input.longitude,
       distance,           // Distance calculée côté service, pas côté client

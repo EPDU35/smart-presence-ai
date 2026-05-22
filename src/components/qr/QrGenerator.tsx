@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import QRCode from "qrcode";
 import { useQrStore } from "@/store/qrStore";
 import { useAuthStore } from "@/store/authStore";
-import { generateQrToken, deactivateOldSessions } from "@/services/qr.service";
+import { generateQrToken } from "@/services/qr.service";
 import { useRealtime } from "@/hooks/useRealtime";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
@@ -19,7 +19,6 @@ export function QrGenerator() {
     setRefreshing(true);
     // On ne fait pas de clearToken() ici pour un rafraîchissement transparent
     try {
-      await deactivateOldSessions(user.company_id);
       const session = await generateQrToken(user.company_id);
       setToken(session.token, session.expires_at);
     } finally {

@@ -44,12 +44,8 @@ export function CheckinPage() {
   const { checkin, autoCheckin, isCheckingIn } = useCheckin({
     companyId: user?.company_id ?? "",
     userId: user?.id ?? "",
-    companyLat: company?.latitude ?? 0,
-    companyLon: company?.longitude ?? 0,
-    radius: company?.radius ?? 200,
     openingTime: company?.opening_time,
     closingTime: company?.closing_time,
-    lateTolerance: company?.late_tolerance,
   });
 
   const gpsOk = !geoLoading && !geoError && !!latitude && !!longitude;

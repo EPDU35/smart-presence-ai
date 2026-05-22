@@ -14,6 +14,13 @@ const queryClient = new QueryClient({
   },
 });
 
+if (import.meta.env.DEV) {
+  const hasEnv = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+  console.info(
+    `[Smart Presence] dev build — Supabase: ${hasEnv ? "OK" : "MANQUANT (.env)"} — QR TTL: ${import.meta.env.VITE_QR_EXPIRY_SECONDS ?? 30}s`,
+  );
+}
+
 const root = document.getElementById("root");
 
 if (!root) {

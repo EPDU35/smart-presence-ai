@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import jsQR from "jsqr";
 import { useQrScanner } from "@/hooks/useQrScanner";
+import { normalizeQrToken } from "@/utils/qr-token";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -13,19 +14,24 @@ interface QrScannerProps {
 export function QrScanner({ onScan }: QrScannerProps) {
   const { isScanning, result, error, videoRef, start, stop, onScan: handleScan } = useQrScanner();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const scannedRef = useRef(false);
+
+  useEffect(() => {
+    scannedRef.current = false;
+  }, [isScanning]);
 
   useEffect(() => {
     if (!isScanning || !videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
     let rafId: number;
 
     function scan() {
-      if (!ctx || !canvas || !video) return;
+      if (scannedRef.current || !ctx || !canvas || !video) return;
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -35,8 +41,10 @@ export function QrScanner({ onScan }: QrScannerProps) {
         const code = jsQR(imageData.data, imageData.width, imageData.height);
 
         if (code?.data) {
-          handleScan(code.data);
-          onScan(code.data);
+          scannedRef.current = true;
+          const token = normalizeQrToken(code.data);
+          handleScan(token);
+          onScan(token);
           return;
         }
       }
