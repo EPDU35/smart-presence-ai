@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import mockupImage from "@/img/Mockup.png";
 import logoImage from "@/img/smart_presence_logo.png";
 import { QrCode, MapPin, BarChart3, Shield, Check, ArrowRight, Smartphone, ChevronDown, Rocket, Clock, XCircle, DollarSign } from "lucide-react";
@@ -46,10 +45,6 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
-      {/* NAV */}
-      <PublicNavbar />
-
-      {/* HERO */}
       <section className="px-6 py-20 lg:px-12">
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center">

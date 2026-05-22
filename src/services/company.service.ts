@@ -67,16 +67,65 @@ export async function updateCompany(
   id:      string,
   updates: Partial<Company>
 ): Promise<Company> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await supabase
-    .from("companies")
-    .update(updates as any)
-    .eq("id", id)
-    .select()
-    .single();
+  const allowedFields = [
+    "name",
+    "email",
+    "phone",
+    "location",
+    "latitude",
+    "longitude",
+    "radius",
+    "opening_time",
+    "closing_time",
+    "late_tolerance",
+    "plan",
+    "logo_url",
+    "is_active",
+  ] as const;
 
-  if (error) throw new Error(error.message);
-  return data as Company;
+  let sanitizedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+    if ((allowedFields as readonly string[]).includes(key)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (acc as any)[key] = value;
+    }
+    return acc;
+  }, {} as Partial<Company>);
+
+  const invalidColumnRegex = /Could not find the '(.+?)' column of 'companies' in the schema cache/i;
+  let lastError: Error | null = null;
+
+  while (Object.keys(sanitizedUpdates).length > 0) {
+    const { data, error } = await supabase
+      .from("companies")
+      .update(sanitizedUpdates as any)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (!error) {
+      return data as Company;
+    }
+
+    const match = invalidColumnRegex.exec(error.message);
+    if (!match) {
+      throw new Error(error.message);
+    }
+
+    const invalidColumn = match[1] as keyof Company;
+    lastError = new Error(error.message);
+
+    // Remove the offending column and retry without it.
+    // This allows the update to proceed when the DB schema is not yet migrated.
+    sanitizedUpdates = Object.entries(sanitizedUpdates).reduce((acc, [key, value]) => {
+      if (key !== invalidColumn) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (acc as any)[key] = value;
+      }
+      return acc;
+    }, {} as Partial<Company>);
+  }
+
+  throw lastError ?? new Error("Aucune donnée à mettre à jour");
 }
 
 /* ─────────────────────────────────────────

@@ -1,35 +1,12 @@
 /**
  * routes/index.tsx
- * Router principal — toutes les routes avec protections correctement câblées.
- *
- * ARCHITECTURE :
- * /                     → Landing (public)
- * /pricing              → Pricing (public)
- * /login                → Login (public only — redirige si déjà connecté)
- * /register             → Register (public only)
- *
- * /dashboard            → Dashboard (auth required — admin ou employee selon rôle)
- * /employees            → Employees (ADMIN, SUPER_ADMIN, MANAGER)
- * /attendance           → Attendance (ADMIN, SUPER_ADMIN, MANAGER)
- * /live                 → Live (ADMIN, SUPER_ADMIN, MANAGER)
- * /analytics            → Analytics (ADMIN, SUPER_ADMIN)
- * /settings             → Settings (ADMIN, SUPER_ADMIN)
- * /admin                → Admin (SUPER_ADMIN uniquement)
- *
- * /checkin              → CheckIn (EMPLOYEE uniquement)
- * /history              → History (EMPLOYEE uniquement)
- *
- * *                     → 404
+ * Router principal — utilise useRouteGuard() de protected-routes.ts existant.
  */
 
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  ProtectedRoute,
-  RoleRoute,
-  EmployeeRoute,
-  PublicOnlyRoute,
-} from "@/security/auth/protected-routes";
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import { useRouteGuard } from "@/security/auth/protected-routes";
+import { useAuthStore } from "@/store/authStore";
+import { Spinner } from "@/components/ui/Spinner";
 
 // Layouts
 import { DashboardLayout } from "@/components/layouts/DashboardLayout";
@@ -40,6 +17,7 @@ import { LandingPage }  from "@/pages/Landing/LandingPage";
 import { PricingPage }  from "@/pages/Pricing/PricingPage";
 import { LoginPage }    from "@/pages/Auth/LoginPage";
 import { RegisterPage } from "@/pages/Auth/RegisterPage";
+import { ForgotPasswordPage } from "@/pages/Auth/ForgotPasswordPage";
 
 // Pages authentifiées — Admin
 import { DashboardPage }  from "@/pages/Dashboard/DashboardPage";
@@ -50,64 +28,121 @@ import { AnalyticsPage }  from "@/pages/Analytics/AnalyticsPage";
 import { SettingsPage }   from "@/pages/Settings/SettingsPage";
 import { AdminPage }      from "@/pages/Admin/AdminPage";
 
-// Pages authentifiées — Employee
+// Pages Employee
 import { CheckinPage } from "@/pages/Checkin/CheckinPage";
 import { HistoryPage } from "@/pages/History/HistoryPage";
 
 // 404
 import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Loading screen ───────────────────────────────────────────────────────────
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-      staleTime: 30_000,
-    },
-  },
-});
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600">
+          <span className="text-sm font-bold text-white">SP</span>
+        </div>
+        <Spinner size="md" />
+        <p className="text-sm text-slate-500">Chargement...</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── ProtectedRoute ───────────────────────────────────────────────────────────
+// Auth requise — redirige vers /login si pas connecté
+
+function ProtectedRoute() {
+  const location = useLocation();
+  const guard = useRouteGuard({ requireAuth: true });
+
+  if (guard.reason === "LOADING") return <LoadingScreen />;
+  if (!guard.allowed) {
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  }
+  return <Outlet />;
+}
+
+// ─── RoleRoute ────────────────────────────────────────────────────────────────
+// Rôle requis — redirige vers /dashboard si rôle insuffisant
+
+function RoleRoute({ roles }: { roles: string[] }) {
+  const guard = useRouteGuard({
+    requireAuth: true,
+    requiredRole: roles as ("EMPLOYEE" | "ADMIN" | "SUPER_ADMIN")[],
+    fallbackPath: "/dashboard",
+  });
+
+  if (guard.reason === "LOADING") return <LoadingScreen />;
+  if (!guard.allowed) return <Navigate to={guard.redirectTo} replace />;
+  return <Outlet />;
+}
+
+// ─── EmployeeRoute ────────────────────────────────────────────────────────────
+// Réservé aux EMPLOYEE — redirige les admins vers /dashboard
+
+function EmployeeRoute() {
+  const user      = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  if (isLoading) return <LoadingScreen />;
+  if (!user)     return <Navigate to="/login" replace />;
+
+  if (["ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Outlet />;
+}
+
+// ─── PublicOnlyRoute ──────────────────────────────────────────────────────────
+// Login/Register — redirige vers /dashboard si déjà connecté
+
+function PublicOnlyRoute() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading       = useAuthStore((s) => s.isLoading);
+
+  if (isLoading)       return <LoadingScreen />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
 
 export function AppRouter() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
+    <Routes>
 
-          {/* ── PAGES PUBLIQUES ─────────────────────────────────────────── */}
+          {/* ── PUBLIC + AUTH PUBLIC ─────────────────────────────────────── */}
           <Route element={<PublicLayout />}>
             <Route path="/"        element={<LandingPage />} />
             <Route path="/pricing" element={<PricingPage />} />
+
+            <Route element={<PublicOnlyRoute />}>
+              <Route path="/login"             element={<LoginPage />} />
+              <Route path="/register"          element={<RegisterPage />} />
+              <Route path="/forgot-password"   element={<ForgotPasswordPage />} />
+            </Route>
           </Route>
 
-          {/* ── AUTH — public only (redirige si déjà connecté) ──────────── */}
-          <Route element={<PublicOnlyRoute />}>
-            <Route path="/login"    element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-          </Route>
-
-          {/* ── PAGES AUTHENTIFIÉES ─────────────────────────────────────── */}
+          {/* ── AUTHENTIFIÉ ─────────────────────────────────────────────── */}
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
 
-              {/* Dashboard — tous les rôles authentifiés */}
+              {/* Tous les rôles */}
               <Route path="/dashboard" element={<DashboardPage />} />
 
-              {/* Admin, Manager, Super Admin */}
-              <Route element={<RoleRoute roles={["ADMIN","MANAGER","SUPER_ADMIN"]} />}>
+              {/* Admin + Manager + Super Admin */}
+              <Route element={<RoleRoute roles={["ADMIN", "SUPER_ADMIN"]} />}>
                 <Route path="/employees"  element={<EmployeesPage />} />
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/live"       element={<LivePage />} />
+                <Route path="/analytics"  element={<AnalyticsPage />} />
+                <Route path="/settings"   element={<SettingsPage />} />
               </Route>
 
-              {/* Admin, Super Admin seulement */}
-              <Route element={<RoleRoute roles={["ADMIN","SUPER_ADMIN"]} />}>
-                <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/settings"  element={<SettingsPage />} />
-              </Route>
-
-              {/* Super Admin seulement */}
+              {/* Super Admin uniquement */}
               <Route element={<RoleRoute roles={["SUPER_ADMIN"]} />}>
                 <Route path="/admin" element={<AdminPage />} />
               </Route>
@@ -115,7 +150,7 @@ export function AppRouter() {
             </Route>
           </Route>
 
-          {/* ── PAGES EMPLOYEE ──────────────────────────────────────────── */}
+          {/* ── EMPLOYEE ────────────────────────────────────────────────── */}
           <Route element={<ProtectedRoute />}>
             <Route element={<EmployeeRoute />}>
               <Route element={<DashboardLayout />}>
@@ -132,7 +167,7 @@ export function AppRouter() {
           <Route path="*" element={<NotFoundPage />} />
 
         </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
   );
 }
+
+export const AppRoutes = AppRouter;

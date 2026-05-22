@@ -5,7 +5,6 @@ import { fetchCompany } from "@/services/company.service";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import { Users, Clock, Shield } from "lucide-react";
 
 export function LoginPage() {
@@ -44,7 +43,6 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <PublicNavbar />
       <div className="flex flex-1">
         <div className="hidden w-1/2 bg-primary-50 lg:flex lg:flex-col lg:justify-center lg:px-16">
           <div className="max-w-md">

@@ -28,7 +28,7 @@ export function SettingsPage() {
     radius: company?.radius ?? 100,
     latitude: company?.latitude ?? 0,
     longitude: company?.longitude ?? 0,
-    location: "",
+    location: company?.location ?? "",
     opening_time: company?.opening_time ?? "08:00",
     closing_time: company?.closing_time ?? "18:00",
     late_tolerance: company?.late_tolerance ?? 15,
@@ -79,12 +79,13 @@ export function SettingsPage() {
           name: form.name,
           email: form.email,
           phone: form.phone || null,
+          location: form.location || null,
           radius: isNaN(radiusVal) ? company.radius : radiusVal,
           latitude: isNaN(latVal) ? company.latitude : latVal,
           longitude: isNaN(lngVal) ? company.longitude : lngVal,
           opening_time: form.opening_time || null,
           closing_time: form.closing_time || null,
-          late_tolerance: isNaN(toleranceVal) ? (company.late_tolerance ?? 15) : toleranceVal,
+          late_tolerance: isNaN(toleranceVal) ? company.late_tolerance : toleranceVal,
         });
         setCompany(updatedCompany);
       }

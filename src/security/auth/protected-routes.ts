@@ -76,11 +76,9 @@ export interface GuardResult {
  * À utiliser dans ProtectedRoute component.
  */
 export function useRouteGuard(config: RouteGuardConfig): GuardResult {
-  const { user, isLoading, isAuthenticated } = useAuthStore((s) => ({
-    user: s.user,
-    isLoading: s.isLoading,
-    isAuthenticated: s.isAuthenticated,
-  }));
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const {
     requiredRole,

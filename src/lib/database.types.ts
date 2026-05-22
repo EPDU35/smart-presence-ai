@@ -21,6 +21,9 @@ export interface Database {
           latitude: number;
           longitude: number;
           radius: number;
+          opening_time: string | null;
+          closing_time: string | null;
+          late_tolerance: number | null;
           owner_id: string | null;
           logo_url: string | null;
           is_active: boolean;
@@ -38,6 +41,9 @@ export interface Database {
           latitude: number;
           longitude: number;
           radius?: number;
+          opening_time?: string | null;
+          closing_time?: string | null;
+          late_tolerance?: number | null;
           owner_id?: string | null;
           logo_url?: string | null;
           is_active?: boolean;
@@ -55,6 +61,9 @@ export interface Database {
           latitude?: number;
           longitude?: number;
           radius?: number;
+          opening_time?: string | null;
+          closing_time?: string | null;
+          late_tolerance?: number | null;
           owner_id?: string | null;
           logo_url?: string | null;
           is_active?: boolean;

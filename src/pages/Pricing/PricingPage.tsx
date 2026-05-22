@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { PublicNavbar } from "@/components/layouts/PublicNavbar";
 import logoImage from "@/img/smart_presence_logo.png";
 import { Check, Zap, Building2, Landmark, ChevronDown, ArrowRight } from "lucide-react";
 
@@ -55,10 +54,6 @@ export function PricingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* NAV */}
-      <PublicNavbar />
-
-      {/* HEADER */}
       <div className="px-6 py-16 text-center lg:px-12">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Badge variant="primary" className="mb-4">Tarifs transparents</Badge>

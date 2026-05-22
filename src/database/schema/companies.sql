@@ -20,6 +20,9 @@ CREATE TABLE companies (
 
   -- Rayon en mètres autour du point GPS dans lequel un check-in est considéré valide
   radius_meters   integer     NOT NULL DEFAULT 100 CHECK (radius_meters > 0),
+  opening_time    time        NULL,
+  closing_time    time        NULL,
+  late_tolerance  integer     NULL CHECK (late_tolerance >= 0),
 
   created_at      timestamptz NOT NULL DEFAULT now()
 );
