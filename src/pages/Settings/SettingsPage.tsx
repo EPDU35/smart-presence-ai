@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/Input";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { LocationPicker } from "@/components/register/LocationPicker";
-import { updateCompany } from "@/services/company.service";
+import { updateCompany, companyHasScheduleColumns } from "@/services/company.service";
 import { updateProfile } from "@/services/auth.service";
 import { Shield, Smartphone, MapPin, Building2, User, Copy, Check } from "lucide-react";
+import type { Company } from "@/types";
 
 /** Supabase renvoie souvent "08:00:00" — les inputs type=time attendent "08:00" */
 function normalizeTime(value: string | null | undefined, fallback: string): string {
@@ -17,15 +18,20 @@ function normalizeTime(value: string | null | undefined, fallback: string): stri
   return value.slice(0, 5);
 }
 
+function isEmployeeRole(role: string | undefined): boolean {
+  return role === "EMPLOYEE";
+}
+
 export function SettingsPage() {
   const { user, company, setCompany, setUser } = useAuthStore();
-  const isEmployee = user?.role === "EMPLOYEE";
+  const isEmployee = isEmployeeRole(user?.role);
+  const hasScheduleColumns = companyHasScheduleColumns(company);
   
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [activeSection, setActiveSection] = useState<"company" | "presence" | "security" | "account">(isEmployee ? "account" : "company");
+  const [activeSection, setActiveSection] = useState<"company" | "presence" | "security" | "account">("account");
 
   const [form, setForm] = useState({
     name: company?.name ?? "",
@@ -69,7 +75,8 @@ export function SettingsPage() {
       lastname: user.lastname ?? "",
       phone: user.phone ?? "",
     });
-  }, [user?.id, user?.firstname, user?.lastname, user?.phone]);
+    setActiveSection(isEmployeeRole(user.role) ? "account" : "company");
+  }, [user?.id, user?.role, user?.firstname, user?.lastname, user?.phone]);
 
   function updateField<K extends keyof typeof form>(key: K, value: string | number) {
     // Guard against NaN for numeric fields
@@ -88,15 +95,26 @@ export function SettingsPage() {
     setSaved(false);
     setErrorMsg(null);
     try {
-      if (activeSection === "account") {
-        if (!user?.id) {
-          setSaving(false);
-          return;
-        }
+      // Employés : uniquement le profil (jamais la table companies)
+      if (isEmployee) {
+        if (!user?.id) return;
         const { data, error } = await updateProfile(user.id, {
-          firstname: userForm.firstname,
-          lastname: userForm.lastname,
-          phone: userForm.phone || null,
+          firstname: userForm.firstname.trim(),
+          lastname: userForm.lastname.trim(),
+          phone: userForm.phone?.trim() || null,
+        });
+        if (error) throw new Error(error.message);
+        if (data) setUser(data);
+        setSaved(true);
+        return;
+      }
+
+      if (activeSection === "account") {
+        if (!user?.id) return;
+        const { data, error } = await updateProfile(user.id, {
+          firstname: userForm.firstname.trim(),
+          lastname: userForm.lastname.trim(),
+          phone: userForm.phone?.trim() || null,
         });
         if (error) throw new Error(error.message);
         if (data) setUser(data);
@@ -106,7 +124,7 @@ export function SettingsPage() {
         const lngVal = Number(form.longitude);
         const toleranceVal = Number(form.late_tolerance);
 
-        const updatedCompany = await updateCompany(company.id, {
+        const companyUpdates: Partial<Company> = {
           name: form.name,
           email: form.email,
           phone: form.phone || null,
@@ -114,10 +132,15 @@ export function SettingsPage() {
           radius: isNaN(radiusVal) ? company.radius : radiusVal,
           latitude: isNaN(latVal) ? company.latitude : latVal,
           longitude: isNaN(lngVal) ? company.longitude : lngVal,
-          opening_time: form.opening_time || null,
-          closing_time: form.closing_time || null,
-          late_tolerance: isNaN(toleranceVal) ? company.late_tolerance : toleranceVal,
-        });
+        };
+
+        if (hasScheduleColumns) {
+          companyUpdates.opening_time = form.opening_time || null;
+          companyUpdates.closing_time = form.closing_time || null;
+          companyUpdates.late_tolerance = isNaN(toleranceVal) ? company.late_tolerance : toleranceVal;
+        }
+
+        const updatedCompany = await updateCompany(company.id, companyUpdates);
         setCompany(updatedCompany);
       }
       setSaved(true);
@@ -276,16 +299,24 @@ export function SettingsPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Input type="time" label="Heure d'ouverture" value={form.opening_time} onChange={(e) => updateField("opening_time", e.target.value)} />
-                <Input type="time" label="Heure de fermeture" value={form.closing_time} onChange={(e) => updateField("closing_time", e.target.value)} />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Tolérance retard (minutes)</label>
-                <Input type="number" min={0} max={120} value={form.late_tolerance} onChange={(e) => updateField("late_tolerance", parseInt(e.target.value))} />
-                <p className="mt-1 text-xs text-slate-400">Délai accordé avant qu'un pointage soit marqué comme retard.</p>
-              </div>
+              {hasScheduleColumns ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input type="time" label="Heure d'ouverture" value={form.opening_time} onChange={(e) => updateField("opening_time", e.target.value)} />
+                    <Input type="time" label="Heure de fermeture" value={form.closing_time} onChange={(e) => updateField("closing_time", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Tolérance retard (minutes)</label>
+                    <Input type="number" min={0} max={120} value={form.late_tolerance} onChange={(e) => updateField("late_tolerance", parseInt(e.target.value))} />
+                    <p className="mt-1 text-xs text-slate-400">Délai accordé avant qu'un pointage soit marqué comme retard.</p>
+                  </div>
+                </>
+              ) : (
+                <Alert variant="warning">
+                  Les horaires d'ouverture ne sont pas encore activés sur votre base Supabase.
+                  Exécutez le fichier <code className="text-xs">supabase-schema-additions.sql</code> dans le SQL Editor.
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </motion.div>
