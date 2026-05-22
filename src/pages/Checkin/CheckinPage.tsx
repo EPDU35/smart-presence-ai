@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchTodayCheckins } from "@/services/checkin.service";
 import { useAuthStore } from "@/store/authStore";
 import { useCheckin } from "@/hooks/useCheckin";
@@ -24,6 +24,7 @@ interface CheckinResult {
 
 export function CheckinPage() {
   const { user, company } = useAuthStore();
+  const queryClient = useQueryClient();
   const [flowState, setFlowState] = useState<FlowState>("idle");
   const [result, setResult] = useState<CheckinResult | null>(null);
 
@@ -74,59 +75,38 @@ export function CheckinPage() {
     }
   }, [flowState, gpsGood, distance, company, positionSimilarity, loadingToday, hasValidCheckinToday]);
 
-  async function handleAutoCheckin() {
-    setFlowState("validating");
-    try {
-      const res = await autoCheckin();
+  function applyCheckinResult(res: Awaited<ReturnType<typeof checkin>>, fallbackMessage: string) {
+    const time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    if (res.success) {
+      void queryClient.invalidateQueries({ queryKey: ["checkins"] });
       setResult({
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        time,
         company: company?.name ?? "Votre entreprise",
         distance: Math.round(res.distance),
-        message: "Présence enregistrée automatiquement",
+        message: res.message ?? fallbackMessage,
       });
       setFlowState("success");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      let errorCode: CheckinResult["errorCode"] = "network";
-      if (msg.includes("zone") || msg.includes("distance")) errorCode = "position";
-      else if (msg.includes("GPS") || msg.includes("geo")) errorCode = "gps";
-      setResult({
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        company: company?.name ?? "",
-        distance: 0,
-        message: msg || "Erreur lors du pointage automatique",
-        errorCode,
-      });
-      setFlowState("error");
+      return;
     }
+    const msg = res.message ?? "Erreur lors du pointage";
+    let errorCode: CheckinResult["errorCode"] = "network";
+    if (msg.includes("zone") || msg.includes("distance") || msg.includes("hors")) errorCode = "position";
+    else if (msg.includes("expir")) errorCode = "expired";
+    else if (msg.includes("GPS") || msg.includes("geo") || msg.includes("localisation")) errorCode = "gps";
+    setResult({ time, company: company?.name ?? "", distance: Math.round(res.distance), message: msg, errorCode });
+    setFlowState("error");
+  }
+
+  async function handleAutoCheckin() {
+    setFlowState("validating");
+    const res = await autoCheckin();
+    applyCheckinResult(res, "Présence enregistrée automatiquement");
   }
 
   async function handleScan(token: string) {
     setFlowState("validating");
-    try {
-      const res = await checkin(token);
-      setResult({
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        company: company?.name ?? "Votre entreprise",
-        distance: Math.round(res.distance),
-        message: "Présence enregistrée avec succès",
-      });
-      setFlowState("success");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      let errorCode: CheckinResult["errorCode"] = "network";
-      if (msg.includes("zone") || msg.includes("distance")) errorCode = "position";
-      else if (msg.includes("expir")) errorCode = "expired";
-      else if (msg.includes("GPS") || msg.includes("geo")) errorCode = "gps";
-      setResult({
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        company: company?.name ?? "",
-        distance: 0,
-        message: msg || "Erreur lors du pointage",
-        errorCode,
-      });
-      setFlowState("error");
-    }
+    const res = await checkin(token);
+    applyCheckinResult(res, "Présence enregistrée avec succès");
   }
 
   function reset() {

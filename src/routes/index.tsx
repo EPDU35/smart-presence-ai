@@ -28,6 +28,7 @@ import { LivePage }       from "@/pages/Live/LivePage";
 import { AnalyticsPage }  from "@/pages/Analytics/AnalyticsPage";
 import { SettingsPage }   from "@/pages/Settings/SettingsPage";
 import { AdminPage }      from "@/pages/Admin/AdminPage";
+import { QrKioskPage }    from "@/pages/Kiosk/QrKioskPage";
 
 // Pages Employee
 import { CheckinPage } from "@/pages/Checkin/CheckinPage";
@@ -97,6 +98,17 @@ function EmployeeRoute() {
   return <Outlet />;
 }
 
+/** Admin, manager ou super admin — pas les employés */
+function StaffRoute() {
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  if (isLoading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === "EMPLOYEE") return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
+
 function DashboardSelector() {
   const user = useAuthStore((s) => s.user);
 
@@ -144,7 +156,12 @@ export function AppRouter() {
               <Route path="/dashboard" element={<DashboardSelector />} />
               <Route path="/checkin" element={<CheckinPage />} />
 
-              {/* Admin + Manager + Super Admin */}
+              {/* Écran QR — admin, manager, super admin */}
+              <Route element={<StaffRoute />}>
+                <Route path="/qr-display" element={<QrKioskPage />} />
+              </Route>
+
+              {/* Admin + Super Admin */}
               <Route element={<RoleRoute roles={["ADMIN", "SUPER_ADMIN"]} />}>
                 <Route path="/employees"  element={<EmployeesPage />} />
                 <Route path="/attendance" element={<AttendancePage />} />
