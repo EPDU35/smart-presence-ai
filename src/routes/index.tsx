@@ -155,6 +155,7 @@ export function AppRouter() {
               {/* Tous les rôles */}
               <Route path="/dashboard" element={<DashboardSelector />} />
               <Route path="/checkin" element={<CheckinPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
 
               {/* Écran QR — admin, manager, super admin */}
               <Route element={<StaffRoute />}>
@@ -167,7 +168,6 @@ export function AppRouter() {
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/live"       element={<LivePage />} />
                 <Route path="/analytics"  element={<AnalyticsPage />} />
-                <Route path="/settings"   element={<SettingsPage />} />
               </Route>
 
               {/* Super Admin uniquement */}

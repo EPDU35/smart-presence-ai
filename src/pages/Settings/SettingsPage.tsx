@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { motion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -9,7 +9,13 @@ import { Badge } from "@/components/ui/Badge";
 import { LocationPicker } from "@/components/register/LocationPicker";
 import { updateCompany } from "@/services/company.service";
 import { updateProfile } from "@/services/auth.service";
-import { Shield, Smartphone, Clock, MapPin, Building2, User, Copy, Check } from "lucide-react";
+import { Shield, Smartphone, MapPin, Building2, User, Copy, Check } from "lucide-react";
+
+/** Supabase renvoie souvent "08:00:00" — les inputs type=time attendent "08:00" */
+function normalizeTime(value: string | null | undefined, fallback: string): string {
+  if (!value) return fallback;
+  return value.slice(0, 5);
+}
 
 export function SettingsPage() {
   const { user, company, setCompany, setUser } = useAuthStore();
@@ -29,8 +35,8 @@ export function SettingsPage() {
     latitude: company?.latitude ?? 0,
     longitude: company?.longitude ?? 0,
     location: company?.location ?? "",
-    opening_time: company?.opening_time ?? "08:00",
-    closing_time: company?.closing_time ?? "18:00",
+    opening_time: normalizeTime(company?.opening_time, "08:00"),
+    closing_time: normalizeTime(company?.closing_time, "18:00"),
     late_tolerance: company?.late_tolerance ?? 15,
   });
 
@@ -39,6 +45,31 @@ export function SettingsPage() {
     lastname: user?.lastname ?? "",
     phone: user?.phone ?? "",
   });
+
+  useEffect(() => {
+    if (!company) return;
+    setForm({
+      name: company.name ?? "",
+      email: company.email ?? "",
+      phone: company.phone ?? "",
+      radius: company.radius ?? 100,
+      latitude: company.latitude ?? 0,
+      longitude: company.longitude ?? 0,
+      location: company.location ?? "",
+      opening_time: normalizeTime(company.opening_time, "08:00"),
+      closing_time: normalizeTime(company.closing_time, "18:00"),
+      late_tolerance: company.late_tolerance ?? 15,
+    });
+  }, [company?.id, company?.updated_at]);
+
+  useEffect(() => {
+    if (!user) return;
+    setUserForm({
+      firstname: user.firstname ?? "",
+      lastname: user.lastname ?? "",
+      phone: user.phone ?? "",
+    });
+  }, [user?.id, user?.firstname, user?.lastname, user?.phone]);
 
   function updateField<K extends keyof typeof form>(key: K, value: string | number) {
     // Guard against NaN for numeric fields
@@ -90,9 +121,9 @@ export function SettingsPage() {
         setCompany(updatedCompany);
       }
       setSaved(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.message || "Erreur lors de l'enregistrement");
+      setErrorMsg(err instanceof Error ? err.message : "Erreur lors de l'enregistrement");
     } finally {
       setSaving(false);
     }
@@ -349,8 +380,9 @@ export function SettingsPage() {
         </motion.div>
       )}
 
-      {/* Save button - visible on company, presence, and account tabs */}
-      {(activeSection === "company" || activeSection === "presence" || activeSection === "account") && (
+      {/* Save button — compte (employé) ou entreprise/présence (admin) */}
+      {((isEmployee && activeSection === "account") ||
+        (!isEmployee && (activeSection === "company" || activeSection === "presence" || activeSection === "account"))) && (
         <div className="flex justify-end">
           <Button onClick={handleSave} isLoading={saving} className="rounded-xl">
             Enregistrer les modifications
