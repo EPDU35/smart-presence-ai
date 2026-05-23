@@ -2,6 +2,7 @@
 import { useAuthStore } from "@/store/authStore";
 import { getCurrentUser, getSession } from "@/services/auth.service";
 import { fetchCompany } from "@/services/company.service";
+import { supabase } from "@/lib/supabase";
 
 export function useAuthInit() {
   const { setUser, setCompany, setLoading } = useAuthStore();
@@ -18,9 +19,15 @@ export function useAuthInit() {
         const profile = await getCurrentUser();
         if (cancelled) return;
 
+        if (!profile) {
+          await supabase.auth.signOut();
+          setUser(null);
+          return;
+        }
+
         setUser(profile);
 
-        if (profile?.company_id != null) {
+        if (profile.company_id != null) {
           try {
             const company = await fetchCompany(profile.company_id);
             if (!cancelled) setCompany(company);
