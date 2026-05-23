@@ -275,7 +275,6 @@ export function useCheckin(params?: UseCheckinParams): UseCheckinReturn {
           .select("token")
           .eq("company_id", companyId)
           .eq("active", true)
-          .is("used_at", null)
           .gt("expires_at", new Date().toISOString())
           .order("created_at", { ascending: false })
           .limit(1)

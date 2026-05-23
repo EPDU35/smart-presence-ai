@@ -49,8 +49,7 @@ export async function validateQrToken(
     .single();
 
   if (error || !data) return { valid: false };
-  if (!data.active)    return { valid: false };
-  if (data.used_at)    return { valid: false };
+  if (!data.active && !data.used_at) return { valid: false };
   if (new Date(data.expires_at) < new Date()) return { valid: false };
 
   return { valid: true, sessionId: data.id };

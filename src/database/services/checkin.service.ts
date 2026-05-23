@@ -55,14 +55,13 @@ async function resolveQrSession(
     if (error || !data) continue;
 
     const row = data as QrSessionRow;
-    if (row.used_at) {
-      throw new Error('Ce QR code a déjà été utilisé — scannez le QR actuel à l\'écran admin');
-    }
-    if (!row.active) {
-      throw new Error('QR code remplacé — scannez le nouveau code affiché à l\'écran');
-    }
     if (new Date(row.expires_at) < new Date()) {
       throw new Error('QR code expiré — demandez un nouveau code à l\'admin');
+    }
+    // QR affiché au kiosk : réutilisable par tous les employés jusqu'à expiration.
+    // active=false + used_at renseigné = ancienne logique single-use, on accepte encore si non expiré.
+    if (!row.active && !row.used_at) {
+      throw new Error('QR code remplacé — scannez le nouveau code affiché à l\'écran');
     }
     return row;
   }
@@ -253,26 +252,7 @@ export async function createCheckin(
     ),
   );
 
-  // ── Étape 5 : Marquage du token comme consommé ────────────────────────
-  // On marque AVANT d'insérer le checkin pour éviter la race condition :
-  // si deux requêtes arrivent simultanément avec le même token, la deuxième
-  // trouvera used_at renseigné et sera rejetée à l'étape 1.
-  const { data: consumed, error: updateError } = await supabase
-    .from('qr_sessions')
-    .update({ used_at: new Date().toISOString(), active: false })
-    .eq('id', session.id)
-    .is('used_at', null)
-    .select('id')
-    .maybeSingle();
-
-  if (updateError) {
-    throw new Error('Impossible de valider le QR — exécutez supabase/fix-qr-consume-rls.sql');
-  }
-  if (!consumed) {
-    throw new Error('Ce QR a déjà été scanné — utilisez le code actuel à l\'écran');
-  }
-
-  // ── Étape 6 : Insertion du checkin ────────────────────────────────────
+  // ── Étape 5 : Insertion du checkin ────────────────────────────────────
   const { data: checkin, error: checkinError } = await supabase
     .from('checkins')
     .insert({
