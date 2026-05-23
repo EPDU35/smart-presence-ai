@@ -124,11 +124,10 @@ function DashboardSelector() {
 // ─── PublicOnlyRoute ──────────────────────────────────────────────────────────
 // Login/Register — redirige vers /dashboard si déjà connecté
 
+// Après
 function PublicOnlyRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isLoading       = useAuthStore((s) => s.isLoading);
 
-  if (isLoading)       return <LoadingScreen />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
