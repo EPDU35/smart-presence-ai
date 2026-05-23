@@ -112,6 +112,9 @@ function StaffRoute() {
 function DashboardSelector() {
   const user = useAuthStore((s) => s.user);
 
+  if (user?.role === "SUPER_ADMIN") {
+    return <Navigate to="/admin" replace />;
+  }
   if (user?.role === "EMPLOYEE") {
     return <EmployeeDashboardPage />;
   }
