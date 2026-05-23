@@ -11,27 +11,32 @@ export function useAuthInit() {
     let cancelled = false;
 
     async function init() {
-      setLoading(true);
-      const { data } = await getSession();
+      try {
+        setLoading(true);
+        const { data } = await getSession();
 
-      if (!data.session) {
-        setLoading(false);
-        return;
+        if (!data.session) {
+          return;
+        }
+
+        const profile = await getCurrentUser();
+        if (cancelled) return;
+
+        setUser(profile);
+
+        if (profile?.company_id != null) {
+          try {
+            const company = await fetchCompany(profile.company_id);
+            if (!cancelled) setCompany(company);
+          } catch {
+            console.warn("[useAuthInit] fetchCompany échoué — ignoré");
+          }
+        }
+      } catch (err) {
+        console.error("[useAuthInit] erreur critique:", err);
+      } finally {
+        if (!cancelled) setLoading(false); // ← TOUJOURS exécuté
       }
-
-      const profile = await getCurrentUser();
-      if (cancelled) return;
-
-      setUser(profile);
-
-      // Correction TS2322 : company_id est string | null
-      // fetchCompany n'accepte que string — on vérifie avant d'appeler
-      if (profile?.company_id != null) {
-        const company = await fetchCompany(profile.company_id);
-        if (!cancelled) setCompany(company);
-      }
-
-      setLoading(false);
     }
 
     init();
