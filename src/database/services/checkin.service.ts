@@ -12,12 +12,9 @@ import type { Checkin, CheckinStatus } from '@/types';
 import { haversineDistance } from '@/utils/geo';
 import { qrTokenLookupVariants } from '@/utils/qr-token';
 import { computeCheckinStatus, isOutsideOpeningHours } from '@/utils/attendance-hours';
+import { getLocalDayStartISO, isPastClosingTime } from '@/utils/attendance-day';
 
-// Début de la journée courante — factory function (pas une constante statique)
-// car si le service reste en mémoire après minuit, une constante statique
-// pointerait vers le jour précédent. La factory recalcule à chaque appel.
-const TODAY_START = (): string =>
-  new Date().toISOString().split('T')[0] + 'T00:00:00';
+const TODAY_START = (): string => getLocalDayStartISO();
 
 /**
  * Type pour la création d'un checkin — ce que le frontend envoie.
@@ -100,6 +97,12 @@ export async function createAutoCheckinGps(
 
   if (companyError || !company) {
     throw new Error('Entreprise introuvable');
+  }
+
+  if (isPastClosingTime(new Date(), company.closing_time as string | null)) {
+    throw new Error(
+      'Heure de fermeture dépassée — vous êtes enregistré comme absent pour aujourd\'hui',
+    );
   }
 
   const distance = haversineDistance(
@@ -221,6 +224,12 @@ export async function createCheckin(
 
   if (companyError || !company) {
     throw new Error('Company introuvable pour ce token QR');
+  }
+
+  if (isPastClosingTime(new Date(), company.closing_time as string | null)) {
+    throw new Error(
+      'Heure de fermeture dépassée — pointage impossible, journée clôturée',
+    );
   }
 
   // ── Étape 3 : Calcul de la distance réelle ────────────────────────────

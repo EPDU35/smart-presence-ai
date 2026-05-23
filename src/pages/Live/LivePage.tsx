@@ -4,6 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { fetchTodayCheckins } from "@/services/checkin.service";
 import { fetchEmployees } from "@/services/employee.service";
+import { fetchDailyAttendance } from "@/database/services/daily-attendance.service";
+import { useDayClosure } from "@/hooks/useDayClosure";
+import { useTodayAttendanceStats } from "@/hooks/useTodayAttendanceStats";
+import { getLocalDateKey } from "@/utils/attendance-day";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatDateTime } from "@/utils/format";
@@ -21,7 +25,7 @@ function getName(emp: User | undefined, fallback: string): string {
 }
 
 export function LivePage() {
-  const { user } = useAuthStore();
+  const { user, company } = useAuthStore();
   const companyId = user?.company_id ?? "";
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [countdown, setCountdown] = useState(30);
@@ -39,18 +43,22 @@ export function LivePage() {
     enabled: !!companyId,
   });
 
+  const { data: dailyRecords = [] } = useQuery({
+    queryKey: ["daily-attendance", companyId, getLocalDateKey()],
+    queryFn: () => fetchDailyAttendance(companyId, getLocalDateKey()),
+    enabled: !!companyId,
+    refetchInterval: 60000,
+  });
+
+  useDayClosure(company, employees, checkins, user?.role);
+
+  const stats = useTodayAttendanceStats(employees, checkins, dailyRecords);
+
   const employeeMap = useMemo(() => {
     const map: Record<string, User> = {};
     employees.forEach((e) => { map[e.id] = e; });
     return map;
   }, [employees]);
-
-  const stats = useMemo(() => {
-    const present = checkins.filter((c) => c.status === "VALID").length;
-    const absent = employees.length - present;
-    const late = checkins.filter((c) => c.status === "SUSPICIOUS").length;
-    return { present, absent, late, total: employees.length };
-  }, [checkins, employees]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -249,8 +257,9 @@ export function LivePage() {
             ) : (
               <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
                 {employees.map((emp) => {
+                  const isPresent = stats.presentIds.has(emp.id);
                   const checkin = checkins.find(
-                    (c) => c.user_id === emp.id && c.status === "VALID"
+                    (c) => c.user_id === emp.id && c.status === "VALID",
                   );
                   return (
                     <div
@@ -263,7 +272,7 @@ export function LivePage() {
                         </div>
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
-                            checkin ? "bg-success-500" : "bg-slate-300"
+                            isPresent ? "bg-success-500" : stats.dayClosed ? "bg-danger-500" : "bg-slate-300"
                           }`}
                         />
                       </div>
@@ -276,7 +285,9 @@ export function LivePage() {
                             {formatDateTime(checkin.created_at)}
                           </p>
                         ) : (
-                          <p className="text-xs text-slate-400">Non pointé</p>
+                          <p className={`text-xs ${stats.dayClosed ? "text-danger-600" : "text-slate-400"}`}>
+                            {stats.dayClosed ? "Absent" : "Non pointé"}
+                          </p>
                         )}
                       </div>
                     </div>

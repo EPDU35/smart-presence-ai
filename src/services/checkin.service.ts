@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { supabase } from "@/lib/supabase";
 import type { Checkin } from "@/types";
+import { getLocalDayStartISO } from "@/utils/attendance-day";
 
 export async function fetchCheckins(companyId: string): Promise<Checkin[]> {
   const { data, error } = await supabase
@@ -36,12 +37,11 @@ export async function createCheckin(
 }
 
 export async function fetchTodayCheckins(companyId: string): Promise<Checkin[]> {
-  const today = new Date().toISOString().split("T")[0];
   const { data, error } = await supabase
     .from("checkins")
     .select("*")
     .eq("company_id", companyId)
-    .gte("created_at", `${today}T00:00:00`)
+    .gte("created_at", getLocalDayStartISO())
     .order("created_at", { ascending: false });
 
   if (error) throw error;

@@ -4,6 +4,10 @@ import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { fetchTodayCheckins, fetchWeekCheckins } from "@/services/checkin.service";
 import { fetchEmployees } from "@/services/employee.service";
+import { fetchDailyAttendance } from "@/database/services/daily-attendance.service";
+import { useDayClosure } from "@/hooks/useDayClosure";
+import { useTodayAttendanceStats } from "@/hooks/useTodayAttendanceStats";
+import { getLocalDateKey } from "@/utils/attendance-day";
 import { StatCard } from "@/components/cards/StatCard";
 import { QrGenerator } from "@/components/qr/QrGenerator";
 import { AttendanceChart } from "@/components/charts/AttendanceChart";
@@ -34,8 +38,9 @@ function CheckinFeedItem({ checkin, name }: { checkin: Checkin; name: string }) 
 }
 
 export function DashboardPage() {
-  const { user } = useAuthStore();
+  const { user, company } = useAuthStore();
   const companyId = user?.company_id ?? "";
+  const todayDate = getLocalDateKey();
 
   const { data: checkins = [], isLoading: loadingCheckins } = useQuery({
     queryKey: ["checkins", "today", companyId],
@@ -56,17 +61,22 @@ export function DashboardPage() {
     enabled: !!companyId,
   });
 
+  const { data: dailyRecords = [] } = useQuery({
+    queryKey: ["daily-attendance", companyId, todayDate],
+    queryFn: () => fetchDailyAttendance(companyId, todayDate),
+    enabled: !!companyId,
+    refetchInterval: 60000,
+  });
+
+  useDayClosure(company, employees, checkins, user?.role);
+
+  const stats = useTodayAttendanceStats(employees, checkins, dailyRecords);
+
   const employeeMap = useMemo(() => {
     const map: Record<string, string> = {};
     employees.forEach((e) => { map[e.id] = `${e.firstname} ${e.lastname}`; });
     return map;
   }, [employees]);
-
-  // Calcul des statistiques du jour basées sur les utilisateurs uniques
-  const presentUsers = new Set(checkins.filter(c => c.status === "VALID").map(c => c.user_id)).size;
-  const lateUsers = new Set(checkins.filter(c => c.status === "SUSPICIOUS").map(c => c.user_id)).size;
-  const expectedToday = employees.filter(e => new Date(e.created_at) <= new Date()).length;
-  const absent = Math.max(0, expectedToday - presentUsers);
 
   // Calcul des données du graphique à partir des vrais checkins de la semaine
   const chartData = useMemo(() => {
@@ -118,7 +128,11 @@ export function DashboardPage() {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-slate-900">Tableau de bord</h1>
-        <p className="text-sm text-slate-500">Vue globale de votre activité aujourd'hui.</p>
+        <p className="text-sm text-slate-500">
+          {stats.dayClosed
+            ? "Journée clôturée — absents enregistrés. Demain : nouveau jour (compteurs remis à zéro)."
+            : "Vue globale de votre activité aujourd'hui."}
+        </p>
       </motion.div>
 
       {/* KPI Cards */}
@@ -128,10 +142,10 @@ export function DashboardPage() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)
         ) : (
           <>
-            <StatCard label="Total équipe" value={employees.length} icon={Users} variant="primary" />
-            <StatCard label="Présents" value={presentUsers} icon={UserCheck} variant="success" trend={presentUsers > 0 ? `${Math.round((presentUsers / (employees.length || 1)) * 100)}% de présence` : undefined} trendUp />
-            <StatCard label="Absents" value={absent} icon={UserX} variant="danger" />
-            <StatCard label="Retards" value={lateUsers} icon={Clock} variant="warning" />
+            <StatCard label="Total équipe" value={stats.total} icon={Users} variant="primary" />
+            <StatCard label="Présents" value={stats.present} icon={UserCheck} variant="success" trend={stats.present > 0 ? `${Math.round((stats.present / (stats.total || 1)) * 100)}% de présence` : undefined} trendUp />
+            <StatCard label="Absents" value={stats.absent} icon={UserX} variant="danger" />
+            <StatCard label="Retards" value={stats.late} icon={Clock} variant="warning" />
           </>
         )}
       </motion.div>

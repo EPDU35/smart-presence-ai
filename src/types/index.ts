@@ -48,6 +48,18 @@ export interface Device {
 
 export type CheckinStatus = "VALID" | "INVALID" | "SUSPICIOUS";
 
+export type DailyAttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
+
+export interface DailyAttendance {
+  id: string;
+  company_id: string;
+  user_id: string;
+  attendance_date: string;
+  status: DailyAttendanceStatus;
+  closed_at: string;
+  created_at: string;
+}
+
 export interface Checkin {
   id: string;
   user_id: string;

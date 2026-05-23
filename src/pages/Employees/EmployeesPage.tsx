@@ -4,6 +4,9 @@ import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { fetchEmployees } from "@/services/employee.service";
 import { fetchTodayCheckins } from "@/services/checkin.service";
+import { fetchDailyAttendance } from "@/database/services/daily-attendance.service";
+import { useTodayAttendanceStats } from "@/hooks/useTodayAttendanceStats";
+import { getLocalDateKey } from "@/utils/attendance-day";
 import { DataTable } from "@/components/tables/DataTable";
 import { EmployeeCard } from "@/components/cards/EmployeeCard";
 import { EmployeeForm } from "@/components/forms/EmployeeForm";
@@ -37,7 +40,14 @@ export function EmployeesPage() {
     enabled: !!companyId,
   });
 
-  const presentIds = new Set(todayCheckins.filter((c) => c.status === "VALID").map((c) => c.user_id));
+  const { data: dailyRecords = [] } = useQuery({
+    queryKey: ["daily-attendance", companyId, getLocalDateKey()],
+    queryFn: () => fetchDailyAttendance(companyId, getLocalDateKey()),
+    enabled: !!companyId,
+  });
+
+  const attendance = useTodayAttendanceStats(employees, todayCheckins, dailyRecords);
+  const presentIds = attendance.presentIds;
 
   const filtered = employees.filter((e) =>
     `${e.firstname} ${e.lastname} ${e.email}`.toLowerCase().includes(search.toLowerCase())
@@ -65,8 +75,8 @@ export function EmployeesPage() {
       key: "status",
       header: "Statut",
       render: (row: User) => (
-        <Badge variant={presentIds.has(row.id) ? "success" : "default"}>
-          {presentIds.has(row.id) ? "Présent" : "Absent"}
+        <Badge variant={presentIds.has(row.id) ? "success" : "danger"}>
+          {presentIds.has(row.id) ? "Présent" : attendance.dayClosed ? "Absent (journée clôturée)" : "Absent"}
         </Badge>
       ),
     },

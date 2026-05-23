@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CheckCircle, XCircle, MapPin, Clock, Building2, AlertCircle, RefreshCw, Zap } from "lucide-react";
 import { haversineDistance } from "@/utils/geo";
+import { isPastClosingTime } from "@/utils/attendance-day";
 
 type FlowState = "idle" | "scanning" | "validating" | "success" | "error";
 
@@ -55,6 +56,8 @@ export function CheckinPage() {
 
   const gpsOk = !geoLoading && !geoError && latitude != null && longitude != null;
   const gpsGood = gpsOk && !!accuracy && accuracy <= 150;
+  const pastClosing = isPastClosingTime(new Date(), company?.closing_time);
+  const checkinClosed = pastClosing && !hasValidCheckinToday;
 
   // Compute distance to check for auto-validation
   const distance = useMemo(() => {
@@ -70,11 +73,11 @@ export function CheckinPage() {
   }, [distance, company]);
 
   const canAutoCheckin = useMemo(() => {
-    if (!gpsOk || distance === null || !company?.radius || hasValidCheckinToday || loadingToday) {
+    if (checkinClosed || !gpsOk || distance === null || !company?.radius || hasValidCheckinToday || loadingToday) {
       return false;
     }
     return positionSimilarity >= 92 && distance <= company.radius;
-  }, [gpsOk, distance, company, positionSimilarity, hasValidCheckinToday, loadingToday]);
+  }, [checkinClosed, gpsOk, distance, company, positionSimilarity, hasValidCheckinToday, loadingToday]);
 
   const knownPosition = useMemo(
     () =>
@@ -136,6 +139,7 @@ export function CheckinPage() {
     let errorCode: CheckinResult["errorCode"] = "network";
     if (msg.includes("zone") || msg.includes("distance") || msg.includes("hors")) errorCode = "position";
     else if (msg.includes("expir")) errorCode = "expired";
+    else if (msg.includes("fermeture") || msg.includes("clôtur")) errorCode = "network";
     else if (msg.includes("GPS") || msg.includes("geo") || msg.includes("localisation")) errorCode = "gps";
     setResult({ time, company: company?.name ?? "", distance: Math.round(res.distance), message: msg, errorCode });
     setFlowState("error");
@@ -159,6 +163,12 @@ export function CheckinPage() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-slate-900">Scanner votre présence</h1>
         <p className="text-sm text-slate-500">Utilisez le QR Code affiché par votre administrateur</p>
+        {checkinClosed && (
+          <p className="mt-2 text-sm font-medium text-danger-700">
+            Heure de fermeture dépassée ({company?.closing_time?.slice(0, 5) ?? "—"}) — vous êtes absent pour aujourd&apos;hui.
+            Demain : nouveau jour.
+          </p>
+        )}
       </motion.div>
 
       {/* GPS Status card */}
@@ -238,11 +248,18 @@ export function CheckinPage() {
                 <p className="text-sm font-bold text-success-900">Présence validée</p>
                 <p className="text-xs text-success-700 mt-1">Vous avez déjà validé votre présence pour la session d'aujourd'hui.</p>
               </div>
+            ) : checkinClosed ? (
+              <div className="rounded-3xl border border-danger-200 bg-danger-50 p-6 text-center">
+                <p className="text-sm font-semibold text-danger-900">Journée terminée</p>
+                <p className="mt-2 text-xs text-danger-700">
+                  Pointez avant {company?.closing_time?.slice(0, 5) ?? "la fermeture"} pour être présent.
+                </p>
+              </div>
             ) : (
               <>
                 <button
                   onClick={() => setFlowState("scanning")}
-                  disabled={!!geoError || geoLoading}
+                  disabled={!!geoError || geoLoading || checkinClosed}
                   className="w-full flex flex-col items-center gap-4 rounded-3xl bg-primary-600 py-8 text-white shadow-xl hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
